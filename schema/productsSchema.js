@@ -6,7 +6,7 @@ const productSchema = new Schema({
     product_imgs : [{
         _id   : { type : Schema.Types.ObjectId, auto : false},
         link : { type : String , require : true},
-        alt  : { type : String , require : true},
+        alt  : { type : String },
     }],
     product_short_description : { type : String, default : ''},
     product_description       : { type : String , default : '' },
@@ -17,7 +17,7 @@ const productSchema = new Schema({
     }],
     product_sold_quantity      : { type : Number , default : 0},
     product_variants           : [{
-        _id   : { type : Schema.Types.ObjectId, require : true, auto : true},
+        _id   : { type : Schema.Types.ObjectId, require : true},
         variant_name : { type : String , default : ''},
         variant_slug : { type : String , default : ''},
         price : { type : Number , default : 0 },
@@ -50,7 +50,7 @@ productSchema.index({ product_sold_quantity: 1 });
 
 productSchema.index({ product_name: "text" });
 productSchema.index({ product_short_description: "text" });
-
+productSchema.index({ userID: 1 }); // Thêm index cho userID
 productSchema.index({"product_details.name" : 1 , "product_details.value" : 1})
 
  // nếu truy vấn theo product_details.name và product_value thì sẽ nhanh, 

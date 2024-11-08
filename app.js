@@ -1,5 +1,6 @@
 const express = require('express')
 const app = express()
+const path = require('path');
 app.use(express.json()); // Add this line
 
 require('dotenv').config()
@@ -22,6 +23,18 @@ app.use((req, res, next) => {
   next();
 });
 
+const cors = require("cors");
+app.use(cors());
+
+app.use(cors({
+  origin: 'http://localhost:4200',
+  methods: 'GET,POST,OPTIONS',
+  allowedHeaders: ['Authorization']
+}));
+
+// Thiết lập thư mục tĩnh
+app.use('/public', express.static(path.join(__dirname, 'public')));
+
 // khai báo các Collection để tạo Collection trong mongooseDB
 const users = require('./schema/usersSchema')
 const products = require('./schema/productsSchema')
@@ -43,6 +56,7 @@ app.use(bodyParser.json())
 //parse application/x-www-form-urlencoded
 app.use(bodyParser.urlencoded({ extended: true }));
 
+var ObjectId = require('mongoose').Types.ObjectId;
 
 const port = process.env.PORT
 app.listen(port, () => {
@@ -91,7 +105,6 @@ function ChangeToSlug(title)
 // set up cấu hình lưu trong Multer
 // Multer xử lí các file khi user upload
 const multer = require('multer');
-const path = require('path'); 
 var storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, 'public/images') // thư mục lưu tệp
@@ -109,14 +122,14 @@ app.post('/api/user/create', upload.single('avatar') , async(req, res) => {
   try {
     let { user_email , user_name , user_password ,  user_phone, user_gender , user_birth, user_address  } = req.body 
     let avatar = req.file
-    if(!avatar) return res.send(response(300,'',"Không được để trống ảnh đại diện !"));
+    if(!avatar) return res.send(response(400,'',"Không được để trống ảnh đại diện !"));
 
     // regular expression  : validate data from response
     if(user_email.trim() == '' || user_name.trim() == '' || user_phone == '' || user_password.trim() == '' || user_birth.trim() == '' || user_gender.trim() == '' || user_address.trim() == ''){
-      return res.send(response(300,'',"Không được để trống các Ô !"));
+      return res.send(response(400,'',"Không được để trống các Ô !"));
     }
     if (!validator.isEmail(user_email)) {
-      return res.send(response(300, '', "Invalid email!"));
+      return res.send(response(400, '', "Invalid email!"));
     }
 
     req.body['user_email']    = user_email
@@ -244,82 +257,10 @@ app.get('/api/category/getNameCategory_full' , async (req,res)=>{
 /*
 + Validate image jpg or png in Angular
  */
-// receive data as JSON by req.body
-app.post('/api/product/create' ,
- async (req,res,next)=>{
-  var token = req.headers['authorization']
-  if(!token) return res.send(response(401,'',"Fill your token pls !"))
-  token = token.split(' ')[1]
-  jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-    if(err){ return res.send(response(403,'',"Error token!.")) }
-    else{
-      if(token === undefined){
-       return res.send(response(401,'',"Undefined TOken!."))
-      }
-      else{
-        req.dataUser = decoded
-        next()
-      }
-    }
-  });
- },
- async (req, res)=>{
-  try {
-    let {
-      product_name, product_imgs, product_short_description, product_description ,
-      product_details, product_variants, categoriesID, product_supp_price
-    } = req.body
 
-    if( product_name.trim() == '' || product_short_description.trim() == '' || product_description.trim() == '' || product_supp_price == '' || categoriesID.trim() == ''){
-      return res.send(response(504, '' , " Hãy điền vào các trường thông tin ."))
-    }
-    if(product_imgs.length === 0){
-      return res.send(response(504, '' , " Hãy thêm ít nhất 1 hình ảnh cho sản phẩm này."))
-    }
-    if(product_details.length === 0){
-      return res.send(response(504, '' , " Hãy thêm ít nhất 1 thuộc tính riêng cho sản phẩm này."))
-    }
-    // check ID    
-    var ObjectId = require('mongoose').Types.ObjectId;
-    var categoryCheck = ObjectId.isValid(categoriesID)
-    if(categoryCheck === false){
-      return res.send(response(504, '' ," KHong phải là ObjectId."))
-    }
-
-    const checkCategories = await categories.findOne({_id : new mongoose.Types.ObjectId(categoriesID)}).select("category_name").exec()
-    if(checkCategories.length == 0) { return res.send(response(504,'' , " không có category này."))}
-
-    product_variants.forEach(element => {
-      element.variant_slug = ChangeToSlug(element.variant_name)
-    });
-
-    const data = {
-      product_name : product_name,
-      product_slug : ChangeToSlug(product_name),
-      product_imgs : product_imgs,
-      product_short_description : product_short_description,
-      product_description       : product_description,
-      product_details           : product_details,
-      product_variants          : product_variants,
-      sort        :  await products.countDocuments().exec() ,
-      userID        :  req.dataUser.data._id , // thuộc về người sở hữu, người tạo ra sản phẩm này
-      categories          : new mongoose.Types.ObjectId(checkCategories._id), 
-      category_name       : checkCategories.category_name,               // khi truy vấn thì ko cần truy vấn tới Collection khác, tăng truy vấn tại đây
-      product_supp_price  : product_supp_price,
-    }
-    const dataProduct = await products.create(data)
-    res.send(response(200,dataProduct))
-  } catch (e) {
-    if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
-    else console.log(e)
-  }
- }
-
-)
 
 // xem thông tin Seller
 var products_on_page = 17
-
 app.post('/api/product/shop', async (req,res)=>{
   try {
     var { page = 1  , sortBy } = req.query // default : pop , or sale , price , time create
@@ -383,7 +324,6 @@ app.post('/api/product/shop', async (req,res)=>{
             }
           }
         }
-
         },
     ]).exec()
 
@@ -400,6 +340,304 @@ app.post('/api/product/shop', async (req,res)=>{
     else console.log(e)
   }
 })
+app.post('/api/product/delete' ,
+  async (req,res,next)=>{
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(' ')[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){ return res.send(response(403,'',"Error token!.")) }
+      else{
+        if(token === undefined){
+        return res.send(response(401,'',"Undefined TOken!."))
+        }
+        else{
+          req.dataUser = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    try {
+      let { productId } = req.body
+      // check ID  and exist
+      var check = ObjectId.isValid(productId)
+      if(check === false) return res.send(response(504, '' ," KHong phải là ObjectId.")) 
+      const exist_product = await products.findById( { _id : new mongoose.Types.ObjectId(productId)}).select("_id").exec()
+      if(exist_product.length == 0) return res.send(response(504,'','Khong có sản phẩm này.'))
+
+      const deleteProduct = await products.deleteOne( {_id : new mongoose.Types.ObjectId(productId)}).exec()
+      res.send(response(200,"Xóa thành công sản phẩm "))
+    } catch (e) {
+      if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+      else console.log(e)
+    }
+  }
+)
+app.post('/api/product/create', 
+  async (req,res,next)=>{
+   var token = req.headers['authorization']
+   if(!token) return res.send(response(401,'',"Fill your token pls !"))
+   token = token.split(' ')[1]
+   jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+     if(err){ return res.send(response(403,'',"Error token!.")) }
+     else{
+       if(token === undefined){
+        return res.send(response(401,'',"Undefined TOken!."))
+       }
+       else{
+         req.dataUser = decoded
+         next()
+       }
+     }
+   });
+  }
+  ,upload.fields([
+   {name : "img_product", maxCount : 5},
+   {name : "product_variants_img" , maxCount : 7}
+  ]),
+  async (req, res)=>{
+   try {
+     let {
+       product_name, product_short_description, product_description ,
+        categoriesID, product_supp_price,  product_variants, product_details_arr
+     } = req.body     
+     
+     let img_product = req.files['img_product']
+     let product_variants_img = req.files["product_variants_img"]   
+
+     //let product_variants = JSON.stringify(req.body.product_variants) //if not parse to JSON, it will a String, not a Object Array
+     product_variants = JSON.parse(product_variants) //if not parse to JSON, it will a String, not a Object Array
+     //let product_details = JSON.stringify(req.body.product_details_arr)
+    //  product_details = JSON.parse(product_details)
+    product_details = JSON.parse(product_details_arr)
+
+ 
+     if( product_name.trim() == '' || product_short_description.trim() == '' || product_description.trim() == '' || product_supp_price == '' || categoriesID.trim() == ''){
+       return res.send(response(504, '' , " Hãy điền vào các trường thông tin ."))
+     }
+     if(product_details.length === 0){
+       return res.send(response(504, '' , " Hãy thêm ít nhất 1 thuộc tính riêng cho sản phẩm này."))
+     }
+    //  console.log(product_details);
+    //  console.log(req.body);
+    // console.log(req.files);
+
+     product_imgs = []
+     img_product.forEach((file,index) =>{
+       product_imgs.push({
+         link : img_product[index].path,
+         alt  : img_product[index].filename
+       })
+     })
+    
+    // per image, will 
+    product_variants_img_arr = []
+    product_variants_img.forEach( (file,index)=>{
+      let product_imgs_object = {
+        alt  : product_variants_img[index].path,
+        link : product_variants_img[index].filename
+      } 
+      product_variants_img_arr.push(product_imgs_object)
+      product_variants[index]["variant_imgs"] = product_variants_img_arr
+    }) 
+     // check ID    
+     var ObjectId = require('mongoose').Types.ObjectId;
+     var categoryCheck = ObjectId.isValid(categoriesID)
+     if(categoryCheck === false){
+       return res.send(response(504, '' ," KHong phải là ObjectId."))
+     }
+ 
+     const checkCategories = await categories.findOne({_id : new mongoose.Types.ObjectId(categoriesID)}).select("category_name").exec()
+     if(checkCategories.length == 0) { return res.send(response(504,'' , " không có category này."))}     
+ 
+     if (!Array.isArray(product_variants)) {      
+       return res.send(response(504,'' , " product_variants không phải là 1 array."))
+     }
+     product_variants.forEach(element => {
+       element.variant_slug = ChangeToSlug(element.variant_name);
+     });
+ 
+     const data = {
+       product_name : product_name,
+       product_slug : ChangeToSlug(product_name),
+       product_imgs : product_imgs,
+       product_short_description : product_short_description,
+       product_description       : product_description,
+       product_details           : product_details,
+       product_variants          : product_variants,
+       sort        :  await products.countDocuments().exec() ,
+       userID        :  new mongoose.Types.ObjectId(req.dataUser.data._id) , // thuộc về người sở hữu, người tạo ra sản phẩm này
+       categories          : new mongoose.Types.ObjectId(checkCategories._id), 
+       category_name       : checkCategories.category_name,               // khi truy vấn thì ko cần truy vấn tới Collection khác, tăng truy vấn tại đây
+       product_supp_price  : product_supp_price,
+     }   
+     const dataProduct = await products.create(data)
+     res.send(response(200,dataProduct))
+   } catch (e) {
+     if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+     else console.log(e)
+   }
+  }
+ 
+)
+app.post('/api/product/update', 
+  async (req,res,next)=>{
+   var token = req.headers['authorization']
+   if(!token) return res.send(response(401,'',"Fill your token pls !"))
+   token = token.split(' ')[1]
+   jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+     if(err){ return res.send(response(403,'',"Error token!.")) }
+     else{
+       if(token === undefined){
+        return res.send(response(401,'',"Undefined TOken!."))
+       }
+       else{
+         req.dataUser = decoded
+         next()
+       }
+     }
+   });
+  }
+  ,upload.fields([
+   {name : "img_product", maxCount : 12},
+   {name : "product_variants_img" , maxCount : 12}
+  ]),
+  async (req, res)=>{
+   try {
+     let {
+      product_id ,product_name, product_short_description, product_description ,
+      product_variants,  categoriesID, product_supp_price, product_details
+     } = req.body
+     
+     let img_product = req.files['img_product']
+     let product_variants_img = req.files["product_variants_img"]
+ 
+     if( product_name.trim() == '' || product_short_description.trim() == '' || product_description.trim() == '' || product_supp_price == '' || categoriesID.trim() == ''){
+       return res.send(response(504, '' , " Hãy điền vào các trường thông tin ."))
+     }
+     if(product_details.length === 0){
+       return res.send(response(504, '' , " Hãy thêm ít nhất 1 thuộc tính riêng cho sản phẩm này."))
+     }
+     
+     product_variants = JSON.parse(req.body.product_variants) //if not parse to JSON, it will a String, not a Object Array
+     product_details = JSON.parse(req.body.product_details)
+     
+     product_imgs = []
+     img_product.forEach((file,index) =>{
+       product_imgs.push({
+         link : img_product[index].path,
+         alt  : img_product[index].filename
+       })
+     })
+     
+     var categoryCheck = ObjectId.isValid(categoriesID)
+     var productCheck = ObjectId.isValid(product_id)
+     if(categoryCheck === false || productCheck === false){
+       return res.send(response(504, '' ," KHong phải là ObjectId."))
+     }
+ 
+     const checkCategories = await categories.findOne({_id : new mongoose.Types.ObjectId(categoriesID)}).select("category_name").exec()
+     const checkProduct = await products.findOne({_id : new mongoose.Types.ObjectId(product_id)}).select("_id sort").exec()
+     if(checkCategories.length == 0 ||  checkProduct.length == 0) { return res.send(response(504,'' , " không có sản phẩm hoặc category này."))}
+ 
+     if (!Array.isArray(product_variants)) {
+       return res.send(response(504,'' , " product_variants không phải là 1 array."))
+     }
+     product_variants.forEach(element => {
+       element.variant_slug = ChangeToSlug(element.variant_name);
+     });
+
+     const data = {
+       product_name : product_name,
+       product_slug : ChangeToSlug(product_name),
+       product_imgs : product_imgs,
+       product_short_description : product_short_description,
+       product_description       : product_description,
+       product_details           : product_details,
+       product_variants          : product_variants,
+       sort        :  checkProduct.sort ,
+       userID        :  req.dataUser.data._id , // thuộc về người sở hữu, người tạo ra sản phẩm này
+       categories          : new mongoose.Types.ObjectId(checkCategories._id), 
+       category_name       : checkCategories.category_name,               // khi truy vấn thì ko cần truy vấn tới Collection khác, tăng truy vấn tại đây
+       product_supp_price  : product_supp_price,
+     }         
+     const dataProduct = await products.updateOne( {_id : new mongoose.Types.ObjectId(product_id)} , data ,{new : true}) // UpdateOne(filter,data_update,option)
+     res.send(response(200,"Thành công update"))
+   } catch (e) {
+     if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+     else console.log(e)
+   }
+  }
+ 
+) 
+app.post('/api/product/listProduct',
+ async (req,res,next)=>{
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(' ')[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){ return res.send(response(403,'',"Error token!.")) }
+      else{
+        if(token === undefined){
+        return res.send(response(401,'',"Undefined TOken!."))
+        }
+        else{
+          req.dataUser = decoded
+          next()
+        }
+      }
+    });
+ },
+ async (req,res)=>{
+  try {
+    let user_id = req.dataUser.data._id
+    let { sortBy } = req.query 
+    var page = 1
+    var sort_condition
+    var attribute
+    
+    if(sortBy == "time_desc"){
+      sort_condition = -1 // giảm dần : -1  và tăng dần : 1
+      attribute      = "createdAt"
+    }else if(sortBy == "sales"){
+      sort_condition = -1
+      attribute      = "product_sold_quantity"
+    }else if(sortBy == "price_asc"){
+      sort_condition = 1
+      attribute      = "product_variants[0].price"
+    }else if(sortBy == "price_desc"){
+      sort_condition = -1
+      attribute      = "product_variants[0].price"
+    }
+    else{
+      sort_condition = -1
+      attribute      = "product_avg_rating"
+    }
+
+    const data = await products.aggregate([
+      { $match : { userID : new mongoose.Types.ObjectId(user_id) }},
+      { $project : {
+        _id : 1 ,
+        product_name : 1 ,
+        product_imgs : 1,
+        product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
+        category_name   : 1 
+      }},
+      { $sort  : { [attribute] : sort_condition} },
+      { $skip  : parseInt((page-1) * products_on_page)},
+      { $limit : products_on_page}
+    ]).exec()
+
+    res.send(response(200,data))
+  } catch (e) {
+    if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+    else console.log(e)
+  }
+ }
+)
+
 
 
 app.post('/api/user/cart' ,
@@ -435,12 +673,18 @@ app.post('/api/user/cart' ,
      .select("cart")
      .populate({
       path     : 'cart.product' ,
-      select   : 'product_name product_imgs product_variants.price userID',
+      select   : 'product_name product_slug product_imgs product_variants.price product_variants.variant_imgs userID',
       populate : { path : 'userID' , select : 'user_name' , strictPopulate : false},
       strictPopulate : false })
     // path ở đây sẽ thay thế phần nào của các kết quả trả về trong select() và thay thế bằng đường dẫn và tài liệu của cái thay thế này
     // ở đây sẽ có product là _id của sản phẩm, ta populate thay thế thế bằng document tương ứng với _id sản phẩm này
      .exec()
+
+    // checkExist.data.forEach( element =>{
+    //   const product = element.product
+    //   const populate = product.
+
+    // })
 
     if(checkExist[0].cart.length == 0){
       return res.send(response(200,'Không có sản phẩm nào trong giỏ hàng hiện tại.',""))
@@ -452,7 +696,6 @@ app.post('/api/user/cart' ,
   }
  }
 )
-
 app.post('/api/user/cart/create',
 async (req,res,next) => {
   var token = req.headers['authorization']
@@ -534,7 +777,6 @@ async (req,res,next) => {
   }
  }
 )
-
 app.post('/api/user/cart/delete',
 async (req,res,next) => {
   var token = req.headers['authorization']
@@ -582,13 +824,7 @@ async (req,res,next) => {
         { new: true } // Tùy chọn này trả về tài liệu sau khi cập nhật
 
     ).exec()
-
-    if(deleteInCart !== null){
-      return res.send(response(200,'Không có sản phẩm này trong giỏ hàng'))
-    }else{
-      // return res.send(response(200,'Đã xóa khỏi giỏ hàng thành công.'))
-      return res.send(response(200,deleteInCart))
-    }
+    return res.send(response(200,"Xóa thành công"))
 /*
     +Nếu xóa thành công:
       Hàm sẽ trả về tài liệu người dùng trước khi phần tử trong mảng cart bị xóa.
@@ -602,7 +838,6 @@ async (req,res,next) => {
   }
  }
 )
-
 app.post('/api/product/:product_slug', async (req,res) => {
  try {
   var { productId } = req.body
@@ -631,6 +866,11 @@ app.post('/api/product/:product_slug', async (req,res) => {
 
 
 })
+// update quality of product in cart
+// get product_detail
+// làm xong trang shop của seller
+
+
 
 //Single
 app.post('/uploadfile', upload.single('image'), (req, res, next) => {
@@ -644,7 +884,7 @@ app.post('/uploadfile', upload.single('image'), (req, res, next) => {
 })
 
 //Uploading multiple files
-app.post('/uploadmultiple', upload.array('image', 12), (req, res, next) => {
+app.post('/uploadmultiple', upload.array('images', 12), (req, res, next) => {
   const files = req.files
   if (!files) {
     const error = new Error('Please choose files')
@@ -654,4 +894,18 @@ app.post('/uploadmultiple', upload.array('image', 12), (req, res, next) => {
   res.send(response(200,files))
 
 })
+////Uploading multiple files with multiple fields
+app.post('/multiField', upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'images', maxCount: 12 }
+]), (req, res, next) => {
+  const files = req.files;
+  if (!files) {
+    const error = new Error('Please choose files');
+    error.httpStatusCode = 400;
+    return next(error);
+  }
+  res.send(response(200, files));
+});
 
+  
