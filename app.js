@@ -4,6 +4,7 @@ const path = require('path');
 app.use(express.json()); // Add this line
 
 require('dotenv').config()
+/// helllllllllllllllllllllllllllllllllllooooo
 
 // mở kết nối tới Mongoose
 const mongoose = require('mongoose');
@@ -873,7 +874,7 @@ app.post('/api/product',
       const product_detail = await products.findOne({ _id : productId})
       .populate(
         { path   : "userID" ,
-          select : "user_name createdAt"
+          select : "user_name avatar createdAt"
         }) 
         // populate thêm phần review
       .exec()
@@ -1144,7 +1145,7 @@ app.post('/api/user/cart/update',
       { $set : {"cart.$.quantity" : parseInt(quantity)} },
       {new : true}
       )
-    res.send(response(200,"Successfully"))      
+    res.send(response(200,"Successfull"))      
   } catch (error) {
     if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
     else console.log(error);
