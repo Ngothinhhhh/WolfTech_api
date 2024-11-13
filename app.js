@@ -4,7 +4,6 @@ const path = require('path');
 app.use(express.json()); // Add this line
 
 require('dotenv').config()
-/// helllllllllllllllllllllllllllllllllllooooo
 
 // mở kết nối tới Mongoose
 const mongoose = require('mongoose');
@@ -356,6 +355,7 @@ app.post('/api/category/getAllCategory' , async (req,res)=>{
   const dataCategory = await categories.find({}).select("category_name").exec()
   res.send(response(200 , dataCategory))
 })
+
 /*
 + Validate image jpg or png in Angular
  */
@@ -371,7 +371,6 @@ app.post('/api/product/shop', async (req,res)=>{
     let sort_condition 
     let attribute
 
-    var ObjectId = require("mongoose").Types.ObjectId
     var check = ObjectId.isValid(Id_seller)
     if(check === false ){
       return res.send(response(504, '' ," KHong phải là ObjectId."))
@@ -389,10 +388,10 @@ app.post('/api/product/shop', async (req,res)=>{
       attribute      = "product_sold_quantity"
     }else if(sortBy == "price_asc"){
       sort_condition = 1
-      attribute      = "product_variants[0].price"
+      attribute      = "product_supp_price"  
     }else if(sortBy == "price_desc"){
       sort_condition = -1
-      attribute      = "product_variants[0].price"
+      attribute      = "product_supp_price"  
     }
     else{
       sort_condition = -1
@@ -400,7 +399,7 @@ app.post('/api/product/shop', async (req,res)=>{
     }
 
     let listProduct    
-    if(category_id != ''){
+    if(category_id.trim() != ''){      
       listProduct = await products.aggregate([
         { $match :{ userID : new ObjectId(Id_seller) ,categories : new ObjectId(category_id) } }, // tại đây, phải có new ObjectId để xác định đây là Id của users mới được, còn không sẽ không ra kết quả nào.
         {
@@ -420,28 +419,27 @@ app.post('/api/product/shop', async (req,res)=>{
         { $limit : products_on_page },
       ]).exec()
     }
-    listProduct = await products.aggregate([
-      { $match :{ userID : new ObjectId(Id_seller) ,} }, // tại đây, phải có new ObjectId để xác định đây là Id của users mới được, còn không sẽ không ra kết quả nào.
-      {
-        $project : {
-        _id : 1,
-        product_name : 1,
-        product_imgs : 1,
-        product_supp_price : 1,
-        product_sold_quantity : 1,
-        product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
-        categories   : 1, // ở đây nếu không lọc ra thì ở dưới _id của $group sẽ bằng null
-        category_name: 1
-        }
-      },
-      { $sort  : { [attribute]  : sort_condition }} ,
-      { $skip  : parseInt((page - 1 ) * products_on_page ) },
-      { $limit : products_on_page },
-    ]).exec()
-    
-    if(listProduct.length == 0 ){
-      return res.send(response(504,'',"không có sản phẩm nào thuộc người chủ cửa hàng này!"))
+    else{
+      listProduct = await products.aggregate([
+        { $match :{ userID : new ObjectId(Id_seller) ,} }, // tại đây, phải có new ObjectId để xác định đây là Id của users mới được, còn không sẽ không ra kết quả nào.
+        {
+          $project : {
+          _id : 1,
+          product_name : 1,
+          product_imgs : 1,
+          product_supp_price : 1,
+          product_sold_quantity : 1,
+          product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
+          categories   : 1, // ở đây nếu không lọc ra thì ở dưới _id của $group sẽ bằng null
+          category_name: 1
+          }
+        },
+        { $sort  : { [attribute]  : sort_condition }} ,
+        { $skip  : parseInt((page - 1 ) * products_on_page ) },
+        { $limit : products_on_page },
+      ]).exec()
     }
+    
     const data = {
       listProduct : listProduct,
       dataUser    : checkExist
@@ -633,8 +631,8 @@ app.post('/api/product/create',
      //let product_variants = JSON.stringify(req.body.product_variants) //if not parse to JSON, it will a String, not a Object Array
      product_variants = JSON.parse(product_variants) //if not parse to JSON, it will a String, not a Object Array
      //let product_details = JSON.stringify(req.body.product_details_arr)
-    //  product_details = JSON.parse(product_details)
-    product_details = JSON.parse(product_details_arr)
+     //  product_details = JSON.parse(product_details)
+     product_details = JSON.parse(product_details_arr)
 
  
      if( product_name.trim() == '' || product_short_description.trim() == '' || product_description.trim() == '' || product_supp_price == '' || categoriesID.trim() == ''){
@@ -793,7 +791,8 @@ app.post('/api/product/update',
    }
   }
  
-) 
+)
+
 
 //Delete this 
 app.post('/api/product/listProduct',
@@ -968,15 +967,14 @@ async (req,res,next) => {
  async (req,res) =>{
   try {
     var userID  = req.body["decoded"].data._id 
-    var { product , variant_id } = req.body
-
-    var ObjectId = require("mongoose").Types.ObjectId
-    var check1 = ObjectId.isValid(product)
-    if(check1 == false){
-      return res.send(response(504,'','Không phải là ObjectId'))
+    var { product , variant_id, quantity } = req.body // productId and variant_id
+ 
+    if(variant_id.trim() == '' || product.trim() == ''){
+      return res.send(response(204,'','Hãy chọn phân loại của sản phẩm'))
     }
+    var check1 = ObjectId.isValid(product)
     var check2 = ObjectId.isValid(variant_id)
-    if(check2 == false){
+    if( check1==false || check2 == false){
       return res.send(response(504,'','Không phải là ObjectId'))
     }
 
@@ -996,7 +994,7 @@ async (req,res,next) => {
             cart : {
               product    : new mongoose.Types.ObjectId(product),
               variant_id : new mongoose.Types.ObjectId(variant_id),
-              quantity   : 1,
+              quantity   : quantity,
             }
           }
         }
@@ -1010,7 +1008,7 @@ async (req,res,next) => {
           'cart.product' : new mongoose.Types.ObjectId(product)
         },
         {
-          $inc : { 'cart.$.quantity' : 1 }
+          $inc : { 'cart.$.quantity' : quantity }
           /* 
             sử dụng để tăng hoặc giảm giá trị của một trường số học
             số n : + n , tăng n giá trị
@@ -1087,32 +1085,6 @@ async (req,res,next) => {
   }
  }
 )
-app.post('/api/product/:product_slug', async (req,res) => {
- try {
-  var { productId } = req.body
-
-  var ObjectId = require("mongoose").Types.ObjectId
-  var check = ObjectId.isValid(productId)
-  if(check == false){
-    return res.send(response(504,'','Không phải là ObjectId'))
-  }
-
-  const productDetail = await products.findOne({_id : productId})
-  .populate({
-    path   : 'userID',
-    select : 'user_email user_name user_phone user_address'
-  }).exec()
-  const populateUserId = productDetail.userID 
-  res.send(response(200, productDetail))
-  } catch (error) {
-    if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
-    else console.log(error);
-  }
-  
-
-
-
-})
 // get product_detail
 // làm xong trang shop của seller
 // get san pham rating cao nhat cua shop do
@@ -1151,6 +1123,79 @@ app.post('/api/user/cart/update',
     else console.log(error);
   }
 })
+
+
+app.post('/api/orders/create',
+  async (req,res,next) => {
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(" ")[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){
+        return res.send(response(404,'',"Error while validating your Token"))
+      }
+      else{
+        if(decoded === undefined){
+          return res.send(response(404,'',"Your Token is undefined"))
+        }
+        else{
+          req.body["decoded"] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    /*{
+        "staff_id": "672f38cdc45d91383ac6de61",
+        "order_total_cost": 150.75,
+        "order_buyer": "thịnh ngô",
+        "order_address": "thanh pho ho chi minh", // must a Object has 3 property
+        "order_details": [
+          {
+            "product_id": "672f3b7bc45d91383ac6de76",
+            "variant_id": "672f3b7bc45d91383ac6de77",
+            "quantity": 1,
+            "unit_price": 50.75
+          }
+        ],
+        "order_shipping_cost": 10.00,
+        "order_payment_cost": 2.50,
+        "order_status": "Processing"
+      }
+      */
+    try {
+      let customer_id  = req.body["decoded"].data._id 
+      let {
+        staff_id,order_total_cost,order_buyer,order_address,
+        order_details,order_shipping_cost,order_payment_cost,order_status
+      } = req.body
+
+      if( order_address.trim() == '' || order_buyer.trim() == '' || order_status.trim() == '' ){
+        return res.send(response(504, '' , " Hãy điền vào các trường thông tin ."))
+      }
+      if(!Array.isArray(order_details)){
+        return res.send(response(504, '' , " Hãy điền lai các trường thông tin ."))
+      }
+      var check = ObjectId.isValid(staff_id)
+      if(check == false){
+        return res.send(response(504,'','Không phải là ObjectId'))
+      }
+      const findSeller = await users.findOne({_id : staff_id}).select("").exec()
+      if(findSeller.length == 0){
+        return res.send(response(504,'','Không có Seller này.'))
+      }
+
+      req.body["customer_id"] = customer_id
+      const newOrders = await orders.create(req.body)
+      res.send(response(200,newOrders))
+      
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
+  }
+)
 
 
 //Single
