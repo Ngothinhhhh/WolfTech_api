@@ -20,4 +20,8 @@ const reviewsSchema = new Schema({
     updatedAt      : { type : Date }
 
 })
+reviewsSchema.index({ product_id : 1 }); // Thêm index cho userID
+reviewsSchema.index({ userID: 1 }); // Thêm index cho userID
+reviewsSchema.index({createdAt : 1})
+
 module.exports = mongoose.model("reviews" , reviewsSchema)

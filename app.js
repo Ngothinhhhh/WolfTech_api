@@ -177,6 +177,7 @@ app.post('/api/user/login' , async (req,res)=>{
       user_email : dataUser[0].user_email,
       user_name  : dataUser[0].user_name,
       user_phone : dataUser[0].user_phone,
+      avatar     : dataUser[0].avatar
     }
     const token = jwt.sign({ data: dataToken }, process.env.SECRETKEY, { expiresIn: '10h' });
     res.send(response(200, token ))
@@ -1125,6 +1126,7 @@ app.post('/api/user/cart/update',
 })
 
 
+
 app.post('/api/orders/create',
   async (req,res,next) => {
     var token = req.headers['authorization']
@@ -1196,6 +1198,185 @@ app.post('/api/orders/create',
     }
   }
 )
+app.post('/api/orders/getList',
+  async (req,res,next) => {
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(" ")[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){
+        return res.send(response(404,'',"Error while validating your Token"))
+      }
+      else{
+        if(decoded === undefined){
+          return res.send(response(404,'',"Your Token is undefined"))
+        }
+        else{
+          req.body["decoded"] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    try {
+      let customer_id  = req.body["decoded"].data._id 
+      let { page = 1 }  = req.body //Paginagation
+
+      const listOrders = await orders.aggregate([
+        {$match : {customer_id : new mongoose.Types.ObjectId(customer_id)}},
+        {$project : {
+          _id          : 1,
+          order_status : 1,
+          createdAt    : 1
+        }},
+        { $sort  : { createdAt : -1 }} ,
+        { $skip  : parseInt((page - 1 ) * products_on_page ) },
+        { $limit : products_on_page },
+      ]).exec()
+      res.send(response(200,listOrders))
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
+  }
+)
+app.post('/api/orders/detail',
+  async (req,res,next) => {
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(" ")[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){
+        return res.send(response(404,'',"Error while validating your Token"))
+      }
+      else{
+        if(decoded === undefined){
+          return res.send(response(404,'',"Your Token is undefined"))
+        }
+        else{
+          req.body["decoded"] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    try {
+      let customer_id  = req.body["decoded"].data._id 
+      let { orders_ID }  = req.body //Paginagation
+      const detailOrder = await orders.find({_id : orders_ID}).exec()
+      res.send(response(200,detailOrder))
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
+  }
+)
+
+
+app.post('/api/reviews/create', upload.array('review_image',5), 
+  async (req,res,next) => {
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(" ")[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){
+        return res.send(response(404,'',"Error while validating your Token"))
+      }
+      else{
+        if(decoded === undefined){
+          return res.send(response(404,'',"Your Token is undefined"))
+        }
+        else{
+          req.body["decoded"] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    try {
+      let user_id  = req.body["decoded"].data._id 
+      let review_image = req.files
+      let {
+        product_id,product_variants_id,product_variants_name,order_id,review_rating,review_context, // review_imgs is a Array Object 
+      } = req.body
+
+      if( product_id.trim() == '' || product_variants_id.trim() == '' || order_id.trim()=='' || review_context.trim() == ''){
+        return res.send(response(504, '' , " Hãy điền vào các trường thông tin ."))
+      }
+      var check = ObjectId.isValid(product_id)
+      var check1 = ObjectId.isValid(product_variants_id)
+      var check2 = ObjectId.isValid(order_id)
+      if(check == false || check1 == false || check2 == false){
+        return res.send(response(504,'','Không phải là ObjectId'))
+      }
+      // product_variants_name
+      user_infor = {
+        user_name   : req.body["decoded"].data.user_name,
+        user_avatar : req.body["decoded"].data.avatar
+      }
+      // review_imgs
+      review_imgs = []
+      review_image.forEach(element =>{
+        const image = {
+          link : element.path ,
+          alt  : element.filename ,
+        }
+      review_imgs.push(image)
+      })
+
+      req.body["product_id"] = product_id
+      req.body["product_variants_id"] = product_variants_id
+      req.body["user_id"] = user_id
+      req.body["order_id"] = order_id
+      req.body["product_variants_name"] = product_variants_name
+      req.body["user_infor"] = user_infor
+      req.body["review_rating"] = parseInt(review_rating)
+      req.body["review_context"] = review_context
+      req.body["review_imgs"] = review_imgs
+
+
+      const newReviews = await reviews.create(req.body)
+      res.send(response(200,newReviews))
+      
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
+  }
+)
+
+app.post('/api/reviews/getList',
+  async (req,res)=>{
+    try {
+      let { page = 1, product_id }  = req.body //Paginagation
+      reviews_on_page = 7
+
+      const listReviews = await reviews.aggregate([
+        {$match : {product_id : new mongoose.Types.ObjectId(product_id)}},
+        {$project : {
+          _id            : 1,
+          product_id     : 1,
+          user_infor     : 1,
+          review_rating  : 1,
+          review_context : 1,
+          review_imgs    : 1 ,
+          createdAt      : 1,
+        }},
+        { $sort  : { review_rating : -1 }} ,
+        { $skip  : parseInt((page - 1 ) * reviews_on_page ) },
+        { $limit : reviews_on_page },
+
+      ]).exec()
+      res.send(response(200,listReviews))
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
+  }
+)
 
 
 //Single
@@ -1224,7 +1405,7 @@ app.post('/uploadmultiple', upload.array('images', 12), (req, res, next) => {
 app.post('/multiField', upload.fields([
   { name: 'image', maxCount: 1 },
   { name: 'images', maxCount: 12 }
-]), (req, res, next) => {
+ ]), (req, res, next) => {
   const files = req.files;
   if (!files) {
     const error = new Error('Please choose files');
