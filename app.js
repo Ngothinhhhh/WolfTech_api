@@ -912,7 +912,6 @@ app.post('/api/user/cart' ,
   try {
     var userID  = req.body["decoded"].data._id 
 
-    var ObjectId = require("mongoose").Types.ObjectId
     var check = ObjectId.isValid(userID)
     if(check == false){
       return res.send(response(504,'','Không phải là ObjectId'))
@@ -921,22 +920,22 @@ app.post('/api/user/cart' ,
      .select("cart")
      .populate({
       path     : 'cart.product' ,
-      select   : 'product_name product_slug product_imgs product_variants._id product_variants.price product_variants.variant_imgs userID categories',
+      select   : 'product_name product_slug product_imgs product_variants._id product_variants.variant_name product_variants.price product_variants.variant_imgs userID categories',
       populate : { path : 'userID' , select : 'user_name' , strictPopulate : false},
       strictPopulate : false })
     // path ở đây sẽ thay thế phần nào của các kết quả trả về trong select() và thay thế bằng đường dẫn và tài liệu của cái thay thế này
     // ở đây sẽ có product là _id của sản phẩm, ta populate thay thế thế bằng document tương ứng với _id sản phẩm này
      .exec()
 
-    // checkExist.data.forEach( element =>{
-    //   const product = element.product
-    //   const populate = product.
-
-    // })
-
     if(checkExist[0].cart.length == 0){
       return res.send(response(200,'Không có sản phẩm nào trong giỏ hàng hiện tại.',""))
     }
+    checkExist[0].cart.forEach( element =>{
+      let variantID = element.variant_id
+      variantID = variantID.toString()
+      element.product.product_variants = element.product.product_variants.filter(variant => variant._id !== variantID )
+    })
+    
     res.send(response(200, checkExist))
   } catch (error) {
     if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
@@ -1198,6 +1197,42 @@ app.post('/api/orders/create',
     }
   }
 )
+app.post('/api/orders/deleteCart',
+  async (req,res,next) => {
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(" ")[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){
+        return res.send(response(404,'',"Error while validating your Token"))
+      }
+      else{
+        if(decoded === undefined){
+          return res.send(response(404,'',"Your Token is undefined"))
+        }
+        else{
+          req.body["decoded"] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    try {
+      let user_id  = req.body["decoded"].data._id 
+      const findSeller = await users.updateOne(
+        {_id : new mongoose.Types.ObjectId(user_id)},
+        { $set :{cart : []} }
+      ) 
+      .select("_id").exec()
+      res.send(response(200,findSeller)) 
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
+  }
+)
+
 app.post('/api/orders/getList',
   async (req,res,next) => {
     var token = req.headers['authorization']
@@ -1228,13 +1263,30 @@ app.post('/api/orders/getList',
         {$project : {
           _id          : 1,
           order_status : 1,
+          order_details: 1,
           createdAt    : 1
         }},
         { $sort  : { createdAt : -1 }} ,
         { $skip  : parseInt((page - 1 ) * products_on_page ) },
         { $limit : products_on_page },
       ]).exec()
+
       res.send(response(200,listOrders))
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
+  }
+)
+
+// đừng đụng tới 
+app.post('/api/ttt',
+  async (req,res)=>{
+    try {
+      let { product_id,variant_id }  = req.body 
+      const productsInfor = await products.findOne({_id : new mongoose.Types.ObjectId(product_id)}).exec()
+      productsInfor.product_variants = productsInfor.product_variants.filter(variant => variant._id.toString() === variant_id ) // bằng thì mới giữ
+      res.send(response(200,productsInfor))
     } catch (error) {
       if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
       else console.log(error);
@@ -1300,7 +1352,9 @@ app.post('/api/reviews/create', upload.array('review_image',5),
       let user_id  = req.body["decoded"].data._id 
       let review_image = req.files
       let {
-        product_id,product_variants_id,product_variants_name,order_id,review_rating,review_context, // review_imgs is a Array Object 
+        // review_imgs is a Array Object 
+        product_id,product_variants_id,product_variants_name,order_id,review_rating,review_context,
+        user_sort,product_sort
       } = req.body
 
       if( product_id.trim() == '' || product_variants_id.trim() == '' || order_id.trim()=='' || review_context.trim() == ''){
@@ -1336,7 +1390,8 @@ app.post('/api/reviews/create', upload.array('review_image',5),
       req.body["review_rating"] = parseInt(review_rating)
       req.body["review_context"] = review_context
       req.body["review_imgs"] = review_imgs
-
+      req.body["user_sort"] = parseInt(user_sort)
+      req.body["product_sort"] = parseInt(product_sort)
 
       const newReviews = await reviews.create(req.body)
       res.send(response(200,newReviews))
@@ -1347,7 +1402,6 @@ app.post('/api/reviews/create', upload.array('review_image',5),
     }
   }
 )
-
 app.post('/api/reviews/getList',
   async (req,res)=>{
     try {

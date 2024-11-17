@@ -11,7 +11,7 @@ const userSchema = new Schema({
     cart            : [{
         _id        : { type : Schema.Types.ObjectId , require : true},
         product    : { type : Schema.Types.ObjectId , ref : 'products', require : true}, // lưu trữ ObjectId sản phẩm đó 
-        variant_id : { type : Schema.Types.ObjectId , ref : 'products.product_variants._id', require : true}, // lưu trữ ObjectId sản phẩm ( varians) đó 
+        variant_id : { type : Schema.Types.ObjectId , ref : 'products', require : true}, // lưu trữ ObjectId sản phẩm ( varians) đó 
         quantity   : { type : Number  , default : 0 }
     }],
     current_orders : [{ type : Schema.Types.ObjectId, ref : "orders" }] ,

@@ -17,8 +17,9 @@ const reviewsSchema = new Schema({
         alt  : { type :String, default : ''}
     }],
     createdAt      : { type : Date , default : new Date()},
-    updatedAt      : { type : Date }
-
+    updatedAt      : { type : Date },
+    user_sort      : { type : Number, default : 0 }, // trường user_sort,product_sort dùng cho phân tích data bên python
+    product_sort   : { type : Number, default : 0 }
 })
 reviewsSchema.index({ product_id : 1 }); // Thêm index cho userID
 reviewsSchema.index({ userID: 1 }); // Thêm index cho userID
