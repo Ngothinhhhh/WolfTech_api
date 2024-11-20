@@ -59,6 +59,9 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 var ObjectId = require('mongoose').Types.ObjectId;
 
+const fs = require("fs"); // file-system
+
+
 const port = process.env.PORT
 app.listen(port, () => {
     console.log(`Example app listening on port ${port}`)
@@ -106,6 +109,7 @@ function ChangeToSlug(title)
 // set up cấu hình lưu trong Multer
 // Multer xử lí các file khi user upload
 const multer = require('multer');
+const { log } = require('console');
 var storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, 'public/images') // thư mục lưu tệp
@@ -177,6 +181,7 @@ app.post('/api/user/login' , async (req,res)=>{
       user_email : dataUser[0].user_email,
       user_name  : dataUser[0].user_name,
       user_phone : dataUser[0].user_phone,
+      sort       : dataUser[0].sort,
       avatar     : dataUser[0].avatar
     }
     const token = jwt.sign({ data: dataToken }, process.env.SECRETKEY, { expiresIn: '10h' });
@@ -909,38 +914,57 @@ app.post('/api/user/cart' ,
   });
  },
  async (req,res) =>{
+  
   try {
-    var userID  = req.body["decoded"].data._id 
-
-    var check = ObjectId.isValid(userID)
-    if(check == false){
-      return res.send(response(504,'','Không phải là ObjectId'))
-    }
-    const checkExist = await users.find({_id : new mongoose.Types.ObjectId(userID)})
-     .select("cart")
-     .populate({
-      path     : 'cart.product' ,
-      select   : 'product_name product_slug product_imgs product_variants._id product_variants.variant_name product_variants.price product_variants.variant_imgs userID categories',
-      populate : { path : 'userID' , select : 'user_name' , strictPopulate : false},
-      strictPopulate : false })
-    // path ở đây sẽ thay thế phần nào của các kết quả trả về trong select() và thay thế bằng đường dẫn và tài liệu của cái thay thế này
-    // ở đây sẽ có product là _id của sản phẩm, ta populate thay thế thế bằng document tương ứng với _id sản phẩm này
-     .exec()
-
-    if(checkExist[0].cart.length == 0){
-      return res.send(response(200,'Không có sản phẩm nào trong giỏ hàng hiện tại.',""))
-    }
-    checkExist[0].cart.forEach( element =>{
-      let variantID = element.variant_id
-      variantID = variantID.toString()
-      element.product.product_variants = element.product.product_variants.filter(variant => variant._id !== variantID )
-    })
+    var userID = req.body["decoded"].data._id;
     
-    res.send(response(200, checkExist))
+    var check = ObjectId.isValid(userID);
+    if (check == false) {
+      return res.send(response(504, '', 'Không phải là ObjectId'));
+    }
+  
+    const checkExist = await users.find({ _id: new mongoose.Types.ObjectId(userID) })
+      .select("cart")
+      .populate({
+        path: 'cart.product',
+        select: 'product_name product_slug product_imgs product_variants._id product_variants.variant_name product_variants.price product_variants.variant_imgs userID categories',
+        populate: { path: 'userID', select: 'user_name', strictPopulate: false },
+        strictPopulate: false
+      })
+      .exec();
+  
+    if (checkExist[0].cart.length == 0) {
+      return res.send(response(200, 'Không có sản phẩm nào trong giỏ hàng hiện tại.', ""));
+    }
+
+    for (let index = 0; index < checkExist[0].cart.length; index++) {
+      // Create a deep copy of the current cart item
+      let currentElement = JSON.parse(JSON.stringify(checkExist[0].cart[index])); 
+      
+      let variantID = currentElement.variant_id.toString();
+      console.log("Variant ID:", variantID);
+      
+      let originalVariants = currentElement.product.product_variants;
+      currentElement.product.product_variants = originalVariants.filter(variant => {
+        console.log("Comparing:", variant._id.toString(), "with", variantID);
+        return variant._id.toString() === variantID;
+      });
+      // Update the cart with the modified item
+      checkExist[0].cart[index] = currentElement;
+    }
+    // console.log("Final Cart:", checkExist[0].cart);  
+    // Here, have a problem that when you handle element in loop 1, you was used this array after filter to Filter in next loop.
+    // so that we need to create a copy the current cart to handle in this, not handle to the current cart 
+    
+    return res.send(response(200, checkExist));
   } catch (error) {
-    if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
-    else console.log(error);
+    if (error.errorResponse) {
+      return res.send(response(error.errorResponse.code, '', error.errorResponse.errmsg));
+    } else {
+      console.log(error);
+    }
   }
+  
  }
 )
 // lúc thêm vào giỏ, cần chính xác productId và variantId đó
@@ -1085,9 +1109,7 @@ async (req,res,next) => {
   }
  }
 )
-// get product_detail
-// làm xong trang shop của seller
-// get san pham rating cao nhat cua shop do
+
 app.post('/api/user/cart/update',
   async (req,res,next) => {
     var token = req.headers['authorization']
@@ -1116,7 +1138,7 @@ app.post('/api/user/cart/update',
       {_id : userID, 'cart.product' : product_id, 'cart.variant_id' : variant_id },
       { $set : {"cart.$.quantity" : parseInt(quantity)} },
       {new : true}
-      )
+      ) 
     res.send(response(200,"Successfull"))      
   } catch (error) {
     if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
@@ -1147,24 +1169,6 @@ app.post('/api/orders/create',
     });
   },
   async (req,res)=>{
-    /*{
-        "staff_id": "672f38cdc45d91383ac6de61",
-        "order_total_cost": 150.75,
-        "order_buyer": "thịnh ngô",
-        "order_address": "thanh pho ho chi minh", // must a Object has 3 property
-        "order_details": [
-          {
-            "product_id": "672f3b7bc45d91383ac6de76",
-            "variant_id": "672f3b7bc45d91383ac6de77",
-            "quantity": 1,
-            "unit_price": 50.75
-          }
-        ],
-        "order_shipping_cost": 10.00,
-        "order_payment_cost": 2.50,
-        "order_status": "Processing"
-      }
-      */
     try {
       let customer_id  = req.body["decoded"].data._id 
       let {
@@ -1233,6 +1237,7 @@ app.post('/api/orders/deleteCart',
   }
 )
 
+// get list khi chưa đánh giá , và sau khi đánh giá
 app.post('/api/orders/getList',
   async (req,res,next) => {
     var token = req.headers['authorization']
@@ -1256,14 +1261,18 @@ app.post('/api/orders/getList',
   async (req,res)=>{
     try {
       let customer_id  = req.body["decoded"].data._id 
-      let { page = 1 }  = req.body //Paginagation
+      let { page = 1 , order_status }  = req.body // Successfull,Processing
 
       const listOrders = await orders.aggregate([
-        {$match : {customer_id : new mongoose.Types.ObjectId(customer_id)}},
+        {$match :
+           {customer_id : new mongoose.Types.ObjectId(customer_id),
+            order_status : order_status 
+           }},
         {$project : {
           _id          : 1,
           order_status : 1,
           order_details: 1,
+          order_payment_cost : 1,
           createdAt    : 1
         }},
         { $sort  : { createdAt : -1 }} ,
@@ -1279,13 +1288,21 @@ app.post('/api/orders/getList',
   }
 )
 
+
+
 // đừng đụng tới 
 app.post('/api/ttt',
   async (req,res)=>{
     try {
       let { product_id,variant_id }  = req.body 
-      const productsInfor = await products.findOne({_id : new mongoose.Types.ObjectId(product_id)}).exec()
-      productsInfor.product_variants = productsInfor.product_variants.filter(variant => variant._id.toString() === variant_id ) // bằng thì mới giữ
+      // console.log(product_id);
+      // console.log(variant_id);
+      const productsInfor = await products
+      .findOne({_id : new mongoose.Types.ObjectId(product_id)})
+      .select("_id product_name product_sold_quantity product_variants sort userID categories category_name createdAt")
+      .exec()
+      productsInfor.product_variants = productsInfor.product_variants.filter(element => { return element._id.toString() === variant_id;})
+      
       res.send(response(200,productsInfor))
     } catch (error) {
       if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
@@ -1327,6 +1344,10 @@ app.post('/api/orders/detail',
 )
 
 
+
+// list order, chỉ lấy ra những trường nào chưa đươợc đánh giá , nếu đánh giá rồi thì đổi trường đó thành hoàn thành, và không hiern thị ra bên kia nưữa
+// sửa ở backend . 
+
 app.post('/api/reviews/create', upload.array('review_image',5), 
   async (req,res,next) => {
     var token = req.headers['authorization']
@@ -1350,11 +1371,11 @@ app.post('/api/reviews/create', upload.array('review_image',5),
   async (req,res)=>{
     try {
       let user_id  = req.body["decoded"].data._id 
+      let user_sort = req.body["decoded"].data.sort
       let review_image = req.files
       let {
         // review_imgs is a Array Object 
-        product_id,product_variants_id,product_variants_name,order_id,review_rating,review_context,
-        user_sort,product_sort
+        product_id,product_variants_id,order_id,review_rating,review_context,
       } = req.body
 
       if( product_id.trim() == '' || product_variants_id.trim() == '' || order_id.trim()=='' || review_context.trim() == ''){
@@ -1366,6 +1387,13 @@ app.post('/api/reviews/create', upload.array('review_image',5),
       if(check == false || check1 == false || check2 == false){
         return res.send(response(504,'','Không phải là ObjectId'))
       }
+
+      const product_detail = await products.findOne({_id : new mongoose.Types.ObjectId(product_id)}).select("_id product_name sort product_variants").exec()
+      product_detail.product_variants = product_detail.product_variants.filter(element => {
+        return element._id.toString() === product_variants_id;
+      })
+
+
       // product_variants_name
       user_infor = {
         user_name   : req.body["decoded"].data.user_name,
@@ -1385,13 +1413,13 @@ app.post('/api/reviews/create', upload.array('review_image',5),
       req.body["product_variants_id"] = product_variants_id
       req.body["user_id"] = user_id
       req.body["order_id"] = order_id
-      req.body["product_variants_name"] = product_variants_name
+      req.body["variant_name"] = product_detail.product_name + product_detail.product_variants[0].variant_name
       req.body["user_infor"] = user_infor
-      req.body["review_rating"] = parseInt(review_rating)
+      req.body["review_rating"] = parseInt(review_rating) 
       req.body["review_context"] = review_context
       req.body["review_imgs"] = review_imgs
       req.body["user_sort"] = parseInt(user_sort)
-      req.body["product_sort"] = parseInt(product_sort)
+      req.body["product_sort"] = product_detail.sort
 
       const newReviews = await reviews.create(req.body)
       res.send(response(200,newReviews))
@@ -1425,6 +1453,99 @@ app.post('/api/reviews/getList',
 
       ]).exec()
       res.send(response(200,listReviews))
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
+  }
+)
+app.post('/api/reviews/update',
+  async (req,res)=>{
+    try {
+      let { order_id, order_detail_id }  = req.body 
+
+      const listReviews = await orders.findOneAndUpdate(
+        { _id : new mongoose.Types.ObjectId(order_id)},
+        { $pull : { order_details : { _id : new mongoose.Types.ObjectId(order_detail_id) } } }
+      ).exec()
+      res.send(response(200,listReviews))
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
+  }
+)
+
+
+app.get('/api/products/search', async(req,res)=>{
+  try {
+    let { search_query,sortBy,page = 1 } = req.query
+    let sort_condition
+    let attribute
+    sortBy.trim()
+
+    if(sortBy == "time_desc"){
+      sort_condition = -1 // giảm dần : -1  và tăng dần : 1
+      attribute      = "createdAt"
+    }else if(sortBy == "sales"){
+      sort_condition = -1
+      attribute      = "product_sold_quantity"
+    }else if(sortBy == "price_asc"){
+      sort_condition = 1
+      attribute      = "product_supp_price"  
+    }else if(sortBy == "price_desc"){
+      sort_condition = -1
+      attribute      = "product_supp_price"  
+    }
+    else{
+      sort_condition = -1
+      attribute      = "product_avg_rating"
+    }
+
+    const searching = await products.aggregate([
+      { $match : 
+        { $text: { $search: search_query }}
+      },
+      { $project :  {
+        _id                    : 1,
+        product_name           : 1,
+        product_sold_quantity  : 1,
+        product_avg_rating     : 1,
+        product_imgs           : 1,
+        review_count           : 1,
+        product_supp_price     : 1,
+        score: { $meta: "textScore" }
+      }},
+      { $sort  : { [attribute]  : sort_condition , score : {$meta : "textScore"}}} , // Trường score: Thêm trường score để lưu trữ điểm số tìm kiếm văn bản từ MongoDB.
+      { $skip  : parseInt((page - 1 ) * products_on_page ) },
+      { $limit : products_on_page } 
+    ]).exec()
+
+    res.send(response(200, searching))
+  } catch (error) {
+    if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+    else console.log(error);
+  }
+})
+
+
+app.get('/api/create_csv',
+  async (req,res)=>{
+    try {
+      const createCsvWriter = require('csv-writer').createObjectCsvWriter;
+      const review_data = await reviews.find({}).select("user_sort product_sort review_rating").exec()
+      const csvWriter = createCsvWriter({
+        path: 'data.csv',
+        header: [
+          {id: 'user_sort', title: 'user_id'},
+          {id: 'product_sort', title: 'product_id'},
+          {id: 'review_rating', title: 'rating'}
+        ]
+      });
+      csvWriter.writeRecords(review_data)
+      .then(() => { console.log('Data saved to data.csv'); })
+      .catch(err => { console.error('Error writing data to CSV file', err); });
+      res.send(response(200,review_data))
     } catch (error) {
       if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
       else console.log(error);

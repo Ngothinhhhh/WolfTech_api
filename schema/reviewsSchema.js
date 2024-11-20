@@ -5,7 +5,7 @@ const reviewsSchema = new Schema({
     product_variants_id  : { type : Schema.Types.ObjectId, ref: "products" , require : true},
     user_id              : { type : Schema.Types.ObjectId, ref: "users", require : true},
     order_id             : { type : Schema.Types.ObjectId, ref: "orders", require : true}, 
-    product_variants_name: { type : String , default : ''},
+    variant_name         : { type : String , default : ''},
     user_infor : {
         user_name   : { type : String, default : '' },
         user_avatar : { type : String, default : '' },
@@ -13,6 +13,7 @@ const reviewsSchema = new Schema({
     review_rating  : { type : Number, default : 0 },
     review_context : { type : String, default : '' },
     review_imgs : [{
+        _id           : { type : Schema.Types.ObjectId, auto : false},
         link : { type :String, default : ''} ,
         alt  : { type :String, default : ''}
     }],

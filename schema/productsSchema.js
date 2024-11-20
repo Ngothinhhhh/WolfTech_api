@@ -1,5 +1,5 @@
 const mongoose = require("mongoose")
-const Schema = mongoose.Schema
+const Schema = mongoose.Schema   
 const productSchema = new Schema({
     product_name : { type : String , require :true, unique : true },
     product_slug : { type : String , require : true, unique :true},
@@ -49,6 +49,7 @@ productSchema.index({ createdAt: 1 });
 productSchema.index({ product_sold_quantity: 1 });
 
 productSchema.index({ product_name: "text" });
+productSchema.index({ product_slug: "text" });
 productSchema.index({ product_short_description: "text" });
 productSchema.index({ userID: 1 }); // Thêm index cho userID
 productSchema.index({"product_details.name" : 1 , "product_details.value" : 1})
