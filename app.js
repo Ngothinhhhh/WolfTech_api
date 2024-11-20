@@ -60,7 +60,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 var ObjectId = require('mongoose').Types.ObjectId;
 
 const fs = require("fs"); // file-system
-
+const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
 const port = process.env.PORT
 app.listen(port, () => {
@@ -181,6 +181,7 @@ app.post('/api/user/login' , async (req,res)=>{
       user_email : dataUser[0].user_email,
       user_name  : dataUser[0].user_name,
       user_phone : dataUser[0].user_phone,
+      user_role  : dataUser[0].user_role,
       sort       : dataUser[0].sort,
       avatar     : dataUser[0].avatar
     }
@@ -201,7 +202,7 @@ app.get('/api/checkToken', async (req, res)=>{
     if (err) {
       return res.send(response(401,'',"Token is expired Error."))
     }else{
-      return res.send(response(200,true))
+      return res.send(response(200, decoded))
     }
   }); 
 })
@@ -914,7 +915,6 @@ app.post('/api/user/cart' ,
   });
  },
  async (req,res) =>{
-  
   try {
     var userID = req.body["decoded"].data._id;
     
@@ -931,12 +931,12 @@ app.post('/api/user/cart' ,
         populate: { path: 'userID', select: 'user_name', strictPopulate: false },
         strictPopulate: false
       })
+      .lean()
       .exec();
-  
-    if (checkExist[0].cart.length == 0) {
-      return res.send(response(200, 'Không có sản phẩm nào trong giỏ hàng hiện tại.', ""));
-    }
 
+      console.log(checkExist);
+      
+  
     for (let index = 0; index < checkExist[0].cart.length; index++) {
       // Create a deep copy of the current cart item
       let currentElement = JSON.parse(JSON.stringify(checkExist[0].cart[index])); 
@@ -952,7 +952,7 @@ app.post('/api/user/cart' ,
       // Update the cart with the modified item
       checkExist[0].cart[index] = currentElement;
     }
-    // console.log("Final Cart:", checkExist[0].cart);  
+    console.log("Final Cart:", checkExist[0].cart);  
     // Here, have a problem that when you handle element in loop 1, you was used this array after filter to Filter in next loop.
     // so that we need to create a copy the current cart to handle in this, not handle to the current cart 
     
@@ -1273,7 +1273,8 @@ app.post('/api/orders/getList',
           order_status : 1,
           order_details: 1,
           order_payment_cost : 1,
-          createdAt    : 1
+          createdAt    : 1,
+          updatedAt    : 1
         }},
         { $sort  : { createdAt : -1 }} ,
         { $skip  : parseInt((page - 1 ) * products_on_page ) },
@@ -1342,7 +1343,6 @@ app.post('/api/orders/detail',
     }
   }
 )
-
 
 
 // list order, chỉ lấy ra những trường nào chưa đươợc đánh giá , nếu đánh giá rồi thì đổi trường đó thành hoàn thành, và không hiern thị ra bên kia nưữa
@@ -1529,29 +1529,55 @@ app.get('/api/products/search', async(req,res)=>{
 })
 
 
-app.get('/api/create_csv',
-  async (req,res)=>{
-    try {
-      const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-      const review_data = await reviews.find({}).select("user_sort product_sort review_rating").exec()
-      const csvWriter = createCsvWriter({
-        path: 'data.csv',
-        header: [
-          {id: 'user_sort', title: 'user_id'},
-          {id: 'product_sort', title: 'product_id'},
-          {id: 'review_rating', title: 'rating'}
-        ]
-      });
-      csvWriter.writeRecords(review_data)
-      .then(() => { console.log('Data saved to data.csv'); })
-      .catch(err => { console.error('Error writing data to CSV file', err); });
-      res.send(response(200,review_data))
-    } catch (error) {
-      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
-      else console.log(error);
-    }
+
+app.get('/api/create_csv', async (req, res) => {
+  try {
+    // Giả sử `reviews` là model đã được định nghĩa
+    const review_data = await reviews.find({}).select("user_sort product_sort review_rating").exec();
+
+    // Bước 1: Tạo đối tượng để lưu trữ tổng số đánh giá và số lượng đánh giá cho từng cặp user_id và product_id
+    const ratingsMap = {};
+
+    review_data.forEach(entry => {
+      const key = `${entry.user_sort}-${entry.product_sort}`;
+      if (!ratingsMap[key]) {
+        ratingsMap[key] = {
+          user_id: entry.user_sort,
+          product_id: entry.product_sort,
+          totalRating: 0,
+          count: 0
+        };
+      }
+      ratingsMap[key].totalRating += entry.review_rating;
+      ratingsMap[key].count += 1;
+    });
+
+    // Bước 2: Tạo dữ liệu duy nhất với giá trị trung bình của các đánh giá trùng lặp
+    const uniqueData = Object.values(ratingsMap).map(entry => ({
+      user_id: entry.user_id,
+      product_id: entry.product_id,
+      rating: entry.totalRating / entry.count
+    }));
+
+    // Bước 3: Ghi dữ liệu vào tệp CSV
+    const csvWriter = createCsvWriter({
+      path: 'data.csv',
+      header: [
+        { id: 'user_id', title: 'user_id' },
+        { id: 'product_id', title: 'product_id' },
+        { id: 'rating', title: 'rating' }
+      ]
+    });
+
+    await csvWriter.writeRecords(uniqueData);
+    console.log('Data saved to data.csv');
+
+    res.send(response(200, uniqueData));
+  } catch (error) {
+    console.error(error);
+    if (error.errorResponse) return res.send(response(error.errorResponse.code, '', error.errorResponse.errmsg));
   }
-)
+});
 
 
 //Single
