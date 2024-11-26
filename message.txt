@@ -12,10 +12,16 @@
 -(Front) Trang shoppage : xử lí khi click vào phần dưới cungd các query thì vẫn sẽ giwữ nguyên vị trí cho tới khi click vào TRang chủ thì mơí chạy lên trên.
 - (Front) - Xử lí suej kiện phần show ra list review của phần product detail. khi click vào các phân trang thì nó vaaxn sẽ  giữ nguyên vị trí chứu không chạy lên đầu trang.
 -(Front) Phần query của trang shop-Page( mới nhất, cũ nhất,rating cao nhất,...) : đang bị khi không có sản phẩm nào thì nó sẽ bị tràn xuống.
+- Reviews
 
 
-
--Nghiên cứu và lọc dữ liệu bên python : tìm hiểu xem nếu trùng user và trùfng sản phẩm , nhưng khác rating thì sẽ xử lí làm sao.
+-Nghiên cứu và lọc dữ l,iệu bên python : tìm hiểu xem nếu trùng user và trùfng sản phẩm , nhưng khác rating thì sẽ xử lí làm sao.
 - kèm theo chạy dữ leieuj thật;.
 
 - Áp dụng Cloudinary vào việc luw trữ hình ảnh .
+
+
+- reduce()
+- slice()
+
+// 20 user, 14 product, và mỗi người mua tầm 3 cái là ít nhất.

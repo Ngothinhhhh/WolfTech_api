@@ -61,6 +61,8 @@ var ObjectId = require('mongoose').Types.ObjectId;
 
 const fs = require("fs"); // file-system
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
+const axios = require('axios');
+
 
 const port = process.env.PORT
 app.listen(port, () => {
@@ -108,16 +110,25 @@ function ChangeToSlug(title)
 
 // set up cấu hình lưu trong Multer
 // Multer xử lí các file khi user upload
+const cloudinary = require('./lib/cloudinary')
 const multer = require('multer');
-const { log } = require('console');
-var storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'public/images') // thư mục lưu tệp
-  },
-  filename: function (req, file, cb) {
-    cb(null, file.fieldname + '-' + Date.now()+ path.extname(file.originalname)) // tên file + timestamps để có tên này là duy nhất + đường dẫn lưu đúng định dạng gốc
-  }
-})
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+    params: { folder: 'uploads',
+    format: async (req, file) => {
+      const formats = ['jpeg', 'jpg', 'png', 'gif'];
+      const fileFormat = path.extname(file.originalname).slice(1);
+      return formats.includes(fileFormat) ? fileFormat : 'jpg'; },
+    public_id: (req, file) => { return file.fieldname + '-' + Date.now(); }, }, });
+// var storage = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null, 'public/images') // thư mục lưu tệp
+//   },
+//   filename: function (req, file, cb) {
+//     cb(null, file.fieldname + '-' + Date.now()+ path.extname(file.originalname)) // tên file + timestamps để có tên này là duy nhất + đường dẫn lưu đúng định dạng gốc
+//   }
+// })
 var upload = multer({ storage: storage })
 
 ////////////USERS /////////////
@@ -169,6 +180,8 @@ app.post('/api/user/login' , async (req,res)=>{
     }
 
     const dataUser = await users.find({user_email}).exec()
+    console.log(dataUser);
+    
     if(dataUser.length == 0){
       return res.send(response(504, '' , 'Cannot find this email!'))
     }
@@ -183,7 +196,8 @@ app.post('/api/user/login' , async (req,res)=>{
       user_phone : dataUser[0].user_phone,
       user_role  : dataUser[0].user_role,
       sort       : dataUser[0].sort,
-      avatar     : dataUser[0].avatar
+      avatar     : dataUser[0].avatar,
+      user_birth : dataUser[0].user_birth
     }
     const token = jwt.sign({ data: dataToken }, process.env.SECRETKEY, { expiresIn: '10h' });
     res.send(response(200, token ))
@@ -193,6 +207,35 @@ app.post('/api/user/login' , async (req,res)=>{
   }
 })
 
+app.post('/api/user/infor' ,
+  async (req,res,next)=>{
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(' ')[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){ return res.send(response(403,'',"Error token!.")) }
+      else{
+        if(token === undefined){
+        return res.send(response(401,'',"Undefined TOken!."))
+        }
+        else{
+          req.body["dataUser"] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    try {
+      let userID = req.body["dataUser"].data._id
+      const userINFOR = await users.findOne( {_id : new mongoose.Types.ObjectId(userID)}).exec()
+      res.send(response(200,userINFOR))
+    } catch (e) {
+      if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+      else console.log(e)
+    }
+  }
+)
 // 1 hàm checkToken return true or false
 app.get('/api/checkToken', async (req, res)=>{
   var token = req.headers['authorization']
@@ -233,19 +276,29 @@ app.post('/api/category/create',
     var token = req.headers['authorization']
     token = token.split(' ')[1]
     var decoded = jwt.verify(token, process.env.SECRETKEY);
-
-    let { category_name , category_img , s_descrip } = req.body
-    if(category_name === undefined || category_name.trim() == '' ) return res.send(response(504,'',"Nhập lại Name của Category này!."))
-    if(category_img === undefined || category_img.trim() == '' )   return res.send(response(504,'',"Nhập lại Image của Category này!."))
-    if(s_descrip === undefined || s_descrip.trim() == '' )         return res.send(response(504,'',"Nhập lại SHort Description của Category này!."))
     
+    let { category_name  , s_descrip, parentCategory  } = req.body
+    if(category_name === undefined || category_name.trim() == '' ) return res.send(response(504,'',"Nhập lại Name của Category này!."))
+    if(s_descrip === undefined || s_descrip.trim() == '' )         return res.send(response(504,'',"Nhập lại SHort Description của Category này!."))
+
     req.body['userID']   = decoded.data._id    
     req.body['category_name']   = category_name
     req.body['category_slug']   = ChangeToSlug(category_name)
-    req.body['category_img']    = category_img
+    req.body['parentCategory']    = parentCategory
     req.body['category_short_description']  =  s_descrip
 
     var dataCategory = await categories.create(req.body)
+    // await categories.updateMany(
+    //   { },
+    //   { $set : 
+    //     {
+    //       "parentCategory.name": "Thời trang nam",
+    //       "parentCategory.img": "https://down-vn.img.susercontent.com/file/687f3967b7c2fe6a134a2c11894eea4b@resize_w320_nl.webp"
+    //     },
+    //     // $unset: { category_img: 1 }
+    //   },
+    //   { new :true }
+    // )
     res.send(response(200,dataCategory))
   } catch (e) {
     if(e.errorResponse){
@@ -358,6 +411,7 @@ app.post('/api/category/delete' ,
     }
   }
 )
+
 app.post('/api/category/getAllCategory' , async (req,res)=>{
   const dataCategory = await categories.find({}).select("category_name").exec()
   res.send(response(200 , dataCategory))
@@ -369,7 +423,7 @@ app.post('/api/category/getAllCategory' , async (req,res)=>{
 
 
 // xem thông tin Seller
-var products_on_page = 17
+var products_on_page = 15
 app.post('/api/product/shop', async (req,res)=>{
   try {
     let { page = 1  , sortBy } = req.query // default : pop , or sale , price , time create
@@ -382,7 +436,7 @@ app.post('/api/product/shop', async (req,res)=>{
     if(check === false ){
       return res.send(response(504, '' ," KHong phải là ObjectId."))
     }
-    const checkExist = await users.findOne({_id : Id_seller}).select("user_name user_avt_img user_phone user_address createdAt").exec()
+    const checkExist = await users.findOne({_id : Id_seller}).select("user_name avatar user_phone user_address createdAt").exec()
     if(checkExist.length == 0){
       return res.send(response(504,"",'KHông có obiectId này!'))
     }
@@ -413,6 +467,7 @@ app.post('/api/product/shop', async (req,res)=>{
           $project : {
           _id : 1,
           product_name : 1,
+          product_slug : 1,
           product_imgs : 1,
           product_supp_price : 1,
           product_sold_quantity : 1,
@@ -433,6 +488,7 @@ app.post('/api/product/shop', async (req,res)=>{
           $project : {
           _id : 1,
           product_name : 1,
+          product_slug : 1,
           product_imgs : 1,
           product_supp_price : 1,
           product_sold_quantity : 1,
@@ -633,13 +689,17 @@ app.post('/api/product/create',
      } = req.body     
      
      let img_product = req.files['img_product']
-     let product_variants_img = req.files["product_variants_img"]   
+     let product_variants_img = req.files["product_variants_img"] 
+     
+     console.log(img_product);
+     console.log(product_variants_img);
+return
 
      //let product_variants = JSON.stringify(req.body.product_variants) //if not parse to JSON, it will a String, not a Object Array
      product_variants = JSON.parse(product_variants) //if not parse to JSON, it will a String, not a Object Array
      //let product_details = JSON.stringify(req.body.product_details_arr)
      //  product_details = JSON.parse(product_details)
-     product_details = JSON.parse(product_details_arr)
+     product_details = JSON.parse(product_details_arr)     
 
  
      if( product_name.trim() == '' || product_short_description.trim() == '' || product_description.trim() == '' || product_supp_price == '' || categoriesID.trim() == ''){
@@ -648,28 +708,25 @@ app.post('/api/product/create',
      if(product_details.length === 0){
        return res.send(response(504, '' , " Hãy thêm ít nhất 1 thuộc tính riêng cho sản phẩm này."))
      }
-    //  console.log(product_details);
-    //  console.log(req.body);
-    // console.log(req.files);
 
      product_imgs = []
-     img_product.forEach((file,index) =>{
-       product_imgs.push({
-         link : img_product[index].path,
-         alt  : img_product[index].filename
-       })
-     })
+     for( let img of img_product){
+      product_imgs.push({
+        link : img.path,
+        alt  : img.filename
+      })
+     }
     
     // per image, will 
     product_variants_img_arr = []
-    product_variants_img.forEach( (file,index)=>{
+    for(let [index,file] of product_variants_img.entries()){
       let product_imgs_object = {
-        alt  : product_variants_img[index].path,
-        link : product_variants_img[index].filename
+        alt  : file.path,
+        link : file.filename
       } 
       product_variants_img_arr.push(product_imgs_object)
       product_variants[index]["variant_imgs"] = product_variants_img_arr
-    }) 
+    }
      // check ID    
      var categoryCheck = ObjectId.isValid(categoriesID)
      if(categoryCheck === false){
@@ -682,9 +739,9 @@ app.post('/api/product/create',
      if (!Array.isArray(product_variants)) {      
        return res.send(response(504,'' , " product_variants không phải là 1 array."))
      }
-     product_variants.forEach(element => {
-       element.variant_slug = ChangeToSlug(element.variant_name);
-     });
+     for(let element of product_variants){
+      element.variant_slug = await ChangeToSlug(element.variant_name);
+    }
  
      const data = {
        product_name : product_name,
@@ -700,6 +757,7 @@ app.post('/api/product/create',
        category_name       : checkCategories.category_name,               // khi truy vấn thì ko cần truy vấn tới Collection khác, tăng truy vấn tại đây
        product_supp_price  : product_supp_price,
      }   
+
      const dataProduct = await products.create(data)
      res.send(response(200,dataProduct))
    } catch (e) {
@@ -1345,9 +1403,6 @@ app.post('/api/orders/detail',
 )
 
 
-// list order, chỉ lấy ra những trường nào chưa đươợc đánh giá , nếu đánh giá rồi thì đổi trường đó thành hoàn thành, và không hiern thị ra bên kia nưữa
-// sửa ở backend . 
-
 app.post('/api/reviews/create', upload.array('review_image',5), 
   async (req,res,next) => {
     var token = req.headers['authorization']
@@ -1373,6 +1428,8 @@ app.post('/api/reviews/create', upload.array('review_image',5),
       let user_id  = req.body["decoded"].data._id 
       let user_sort = req.body["decoded"].data.sort
       let review_image = req.files
+      console.log(req.body);
+      // return
       let {
         // review_imgs is a Array Object 
         product_id,product_variants_id,order_id,review_rating,review_context,
@@ -1392,7 +1449,6 @@ app.post('/api/reviews/create', upload.array('review_image',5),
       product_detail.product_variants = product_detail.product_variants.filter(element => {
         return element._id.toString() === product_variants_id;
       })
-
 
       // product_variants_name
       user_infor = {
@@ -1422,8 +1478,51 @@ app.post('/api/reviews/create', upload.array('review_image',5),
       req.body["product_sort"] = product_detail.sort
 
       const newReviews = await reviews.create(req.body)
-      res.send(response(200,newReviews))
+      const ordersUpdate = await orders.findOneAndUpdate(
+        {_id : new mongoose.Types.ObjectId(order_id)},
+        { order_status : "Successfull"}
+      ).exec()
+
+      const updateRating = await reviews.find({product_id : new mongoose.Types.ObjectId(product_id)}).select("review_rating").exec()
+      const totalRating = updateRating.reduce( (sum,currentvalue) => {
+        return sum + currentvalue.review_rating
+      },0)
+
+      const average = totalRating / updateRating.length
+
+      const addReview = await
+      products.findOneAndUpdate(
+        { _id : product_id },
+        {
+          $push : { recent_reviews : 
+            {
+              review_id      : newReviews._id,
+              variant_name   : req.body["variant_name"],
+              user_infor     : user_infor,
+              review_rating  : parseInt(review_rating) ,
+              review_context : review_context,
+              review_imgs    : review_imgs,
+              review_date    : newReviews.createdAt
+            } 
+          },
+          $inc  : { // + 1
+            review_count : 1,
+            product_sold_quantity : 1
+           },
+          product_avg_rating : average
+        },
+        { new : true}
+      )
       
+      if(addReview.recent_reviews.length > 5){
+        await products
+        .updateOne(
+           { _id : new mongoose.Types.ObjectId(product_id) },
+           [ { $set : { recent_reviews : { $slice: ["$recent_reviews", -5] } } } ] ,
+           { new : true}
+          )
+      }
+      res.send(response(200,newReviews)) 
     } catch (error) {
       if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
       else console.log(error);
@@ -1477,6 +1576,7 @@ app.post('/api/reviews/update',
 )
 
 
+
 app.get('/api/products/search', async(req,res)=>{
   try {
     let { search_query,sortBy,page = 1 } = req.query
@@ -1504,7 +1604,7 @@ app.get('/api/products/search', async(req,res)=>{
 
     const searching = await products.aggregate([
       { $match : 
-        { $text: { $search: search_query }}
+        { $text: { $search: search_query , }} 
       },
       { $project :  {
         _id                    : 1,
@@ -1527,6 +1627,96 @@ app.get('/api/products/search', async(req,res)=>{
     else console.log(error);
   }
 })
+
+
+app.get('/api/products/recommendToken',
+  async (req,res,next) => {
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(" ")[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){
+        return res.send(response(404,'',"Error while validating your Token"))
+      }
+      else{
+        if(decoded === undefined){
+          return res.send(response(404,'',"Your Token is undefined"))
+        }
+        else{
+          req.body["decoded"] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req, res) => {
+    try {
+        let sortUser = req.body["decoded"].data.sort
+        let path = "http://127.0.0.1:5000/api/model_cola";
+        let queryObj = { "num_recommender": 10 , "user_index" : sortUser };
+        let arrayProduct = [];
+
+        // Sử dụng await để đợi axios.post hoàn thành
+        const responsee = await axios.post(path, queryObj);
+        arrayProduct = responsee.data.recommend_items;
+        // console.log(arrayProduct);
+        const recommend = await products.aggregate([
+          {
+            $match: { sort : { $in: arrayProduct.map(sort => sort) } }
+          },
+          {
+            $project: {
+              _id: 1,
+              product_name: 1,
+              product_slug : 1,
+              product_sold_quantity: 1,
+              product_avg_rating: 1,
+              product_imgs: 1,
+              review_count: 1,
+              product_supp_price: 1,
+            }
+          },
+        ]).exec();
+        res.send(response(200, recommend));
+    } catch (error) {
+      if (error.errorResponse) return res.send(response(error.errorResponse.code, '', error.errorResponse.errmsg));
+      else console.log(error);
+    }
+  }
+);
+app.get('/api/products/recommend',
+  async (req, res) => {
+    try {
+        let path = "http://127.0.0.1:5000/api/rank_base";
+        let queryObj = { "n_product": 10 };
+        let arrayProduct = [];
+        const responsee = await axios.post(path, queryObj);
+        arrayProduct = responsee.data.data;
+        // console.log(arrayProduct);
+        const recommend = await products.aggregate([
+          {
+            $match: { sort : { $in: arrayProduct.map(sort => sort) } }
+          },
+          {
+            $project: {
+              _id: 1,
+              product_name: 1,
+              product_slug : 1,
+              product_sold_quantity: 1,
+              product_avg_rating: 1,
+              product_imgs: 1,
+              review_count: 1,
+              product_supp_price: 1,
+            }
+          },
+        ]).exec();
+        res.send(response(200, recommend));
+    } catch (error) {
+      if (error.errorResponse) return res.send(response(error.errorResponse.code, '', error.errorResponse.errmsg));
+      else console.log(error);
+    }
+  }
+);
 
 
 
@@ -1588,6 +1778,8 @@ app.post('/uploadfile', upload.single('image'), (req, res, next) => {
     error.httpStatusCode = 400
     return next(error)
   }
+  console.log(file);
+  
   res.send(response(200,file))
 })
 
@@ -1602,6 +1794,7 @@ app.post('/uploadmultiple', upload.array('images', 12), (req, res, next) => {
   res.send(response(200,files))
 
 })
+
 ////Uploading multiple files with multiple fields
 app.post('/multiField', upload.fields([
   { name: 'image', maxCount: 1 },

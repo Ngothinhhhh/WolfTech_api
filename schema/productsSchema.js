@@ -36,17 +36,26 @@ const productSchema = new Schema({
     product_avg_rating  : { type : Number , default : 0 },
     categories          : { type : Schema.Types.ObjectId, ref : "categories" , require : true }, 
     category_name       : { type: String },                                             // khi truy vấn thì ko cần truy vấn tới Collection khác, tăng truy vấn tại đây
-    recent_reviews      : [{ type : Schema.Types.ObjectId }],                           // chứa mảng các ObjectId review mới nhất , giảm thiểu sự truy vấn
-    recent_images       : [{ type : String }],
+    recent_reviews      : [{
+        review_id    : { type: Schema.Types.ObjectId, ref: 'reviews' },
+        variant_name : { type : String , default : ''},
+        user_infor   : {
+            user_name: { type: String },
+            user_avatar: { type: String }
+        },
+        review_rating: { type: Number },
+        review_context: { type: String },
+        review_imgs: [{ 
+            link:  { type : String , default : ''},
+            alt :  { type : String , default : '' }
+         }],
+        review_date: { type: Date }
+    }],  // chứa mảng các ObjectId review mới nhất , giảm thiểu sự truy vấn
     review_count        : { type : Number , default : 0},
     product_supp_price  : { type : Number , default : 0},
     createdAt           : { type : Date , default : new Date() },
     updatedAt           : { type : Date }
-
 })
-
-productSchema.index({ createdAt: 1 });
-productSchema.index({ product_sold_quantity: 1 });
 
 productSchema.index({ product_name: "text" });
 productSchema.index({ product_slug: "text" });
