@@ -120,13 +120,16 @@ const storage = new CloudinaryStorage({
       const formats = ['jpeg', 'jpg', 'png', 'gif'];
       const fileFormat = path.extname(file.originalname).slice(1);
       return formats.includes(fileFormat) ? fileFormat : 'jpg'; },
-    public_id: (req, file) => { return file.fieldname + '-' + Date.now(); }, }, });
+    public_id: (req, file) => {
+      return file.fieldname + '-' + Date.now() + '-' + Math.round(Math.random() * 1E9);
+      }, }, });
 // var storage = multer.diskStorage({
 //   destination: function (req, file, cb) {
 //     cb(null, 'public/images') // thư mục lưu tệp
 //   },
 //   filename: function (req, file, cb) {
-//     cb(null, file.fieldname + '-' + Date.now()+ path.extname(file.originalname)) // tên file + timestamps để có tên này là duy nhất + đường dẫn lưu đúng định dạng gốc
+//     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+//     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
 //   }
 // })
 var upload = multer({ storage: storage })
@@ -690,18 +693,16 @@ app.post('/api/product/create',
      
      let img_product = req.files['img_product']
      let product_variants_img = req.files["product_variants_img"] 
+//      console.log(img_product);
+//      console.log(product_variants_img);
+// return
      
-     console.log(img_product);
-     console.log(product_variants_img);
-return
-
      //let product_variants = JSON.stringify(req.body.product_variants) //if not parse to JSON, it will a String, not a Object Array
      product_variants = JSON.parse(product_variants) //if not parse to JSON, it will a String, not a Object Array
      //let product_details = JSON.stringify(req.body.product_details_arr)
      //  product_details = JSON.parse(product_details)
      product_details = JSON.parse(product_details_arr)     
 
- 
      if( product_name.trim() == '' || product_short_description.trim() == '' || product_description.trim() == '' || product_supp_price == '' || categoriesID.trim() == ''){
        return res.send(response(504, '' , " Hãy điền vào các trường thông tin ."))
      }
@@ -710,11 +711,12 @@ return
      }
 
      product_imgs = []
-     for( let img of img_product){
-      product_imgs.push({
-        link : img.path,
-        alt  : img.filename
-      })
+     for( let [index,image] of img_product.entries()){
+      let object = {
+        link : image.path,
+        alt  : image.filename
+      }
+      product_imgs.push(object)
      }
     
     // per image, will 
@@ -757,6 +759,7 @@ return
        category_name       : checkCategories.category_name,               // khi truy vấn thì ko cần truy vấn tới Collection khác, tăng truy vấn tại đây
        product_supp_price  : product_supp_price,
      }   
+
 
      const dataProduct = await products.create(data)
      res.send(response(200,dataProduct))
