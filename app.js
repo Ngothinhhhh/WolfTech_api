@@ -417,6 +417,95 @@ app.post('/api/category/delete' ,
   }
 )
 
+app.post('/api/orders/manage',
+  async (req,res,next)=>{
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(' ')[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){ return res.send(response(403,'',"Error token!.")) }
+      else{
+        if(token === undefined){
+        return res.send(response(401,'',"Undefined TOken!."))
+        }
+        else{
+          req.body['dataUser'] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    try {
+      let { page = 1  , sortBy  } = req.query // default : pop , or sale , price , time create
+      let { status } = req.body
+      let Id_seller = req.body['dataUser'].data._id 
+      const checkExist = await users.findOne({_id : Id_seller}).select("_id").exec()
+      if(checkExist.length == 0){
+        return res.send(response(504,"",'KHông có obiectId này!'))
+      }
+
+      if(sortBy == "time_asc"){
+        sort_condition = 1 // giảm dần : -1  và tăng dần : 1
+        attribute      = "createdAt"
+      }else if(sortBy == "price_asc"){
+        sort_condition = 1
+        attribute      = "order_payment_cost"
+      }else if(sortBy == "price_desc"){
+        sort_condition = -1
+        attribute      = "order_payment_cost"
+      }
+      else{
+        sort_condition = -1
+        attribute      = "createdAt"
+      }
+
+      let listORDERS 
+      if(status.trim() != ''){
+        listORDERS = await orders.aggregate([
+          { $match :{ staff_id : new ObjectId(Id_seller) , order_status : status } }, 
+          {
+            $project : {
+            _id : 1,
+            customer_id : 1,
+            staff_id    : 1,
+            order_buyer : 1,
+            order_payment_cost : 1,
+            order_status : 1,
+            createdAt    : 1,
+            }
+          },
+          { $sort  : { [attribute]  : sort_condition }} ,
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page },
+        ]).exec()
+      }else{
+        listORDERS = await orders.aggregate([
+          { $match :{ staff_id : new ObjectId(Id_seller) } }, 
+          {
+            $project : {
+            _id : 1,
+            customer_id : 1,
+            staff_id    : 1,
+            order_buyer : 1,
+            order_payment_cost : 1,
+            order_status : 1,
+            createdAt    : 1,
+            }
+          },
+          { $sort  : { [attribute]  : sort_condition }} ,
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page },
+        ]).exec()
+      }
+      res.send(response(200,listORDERS))
+    } catch (e) {
+      if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+      else console.log(e)
+    }
+})
+
+// for seller 
 app.post('/api/category/getAllCategory' ,
   async (req,res,next)=>{
     var token = req.headers['authorization']
@@ -443,17 +532,98 @@ app.post('/api/category/getAllCategory' ,
 )
 
 app.post('/api/category/products' , async(req,res)=>{
-  let {search_query_category} = req.body
-  if(search_query_category.trim() == '' ){
-    return res.send(response(504, '' ," Null search_query_category."))
-  }
-  const list = await categories.find({ 'parentCategory.name': search_query_category }).exec()
-  res.send(response(200,list))
-})
+  try {
+    let { search_query_category , sortBy , page = 1 , rating = 0 , detail } = req.body
+    let attribute
+    let sort_condition
 
-/*
-+ Validate image jpg or png in Angular
- */
+    if(search_query_category.trim() == '' ){
+      return res.send(response(504, '' ," Null search_query_category."))
+    }
+    const listID_category = await categories.find({ 'parentCategory.name': search_query_category }).select("_id").exec()
+    let list = []
+    for(let ID of listID_category){
+      list.push(ID._id)
+    } 
+    
+    if(sortBy == "time_desc"){
+      sort_condition = -1 // giảm dần : -1  và tăng dần : 1
+      attribute      = "createdAt"
+    }else if(sortBy == "sales"){
+      sort_condition = -1
+      attribute      = "product_sold_quantity"
+    }else if(sortBy == "price_asc"){
+      sort_condition = 1
+      attribute      = "product_supp_price"  
+    }else if(sortBy == "price_desc"){
+      sort_condition = -1
+      attribute      = "product_supp_price"  
+    }
+    else{
+      sort_condition = -1
+      attribute      = "product_avg_rating"
+    }
+    
+    let listProduct
+    if(detail.name != ''){
+      listProduct = await products.aggregate([
+        { $match : {
+            categories :  { $in : list.map(categories => categories)  }, 
+            product_details : {
+              $elemMatch : { name : detail.name , value : detail.value }
+            },
+            product_avg_rating : { $gte : rating },
+          }
+        },
+        {
+          $project : {
+          _id : 1,
+          product_name : 1,
+          product_slug : 1,
+          product_imgs : 1,
+          product_supp_price : 1,
+          product_sold_quantity : 1,
+          product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
+          categories   : 1,
+          category_name: 1
+          }
+        },
+        { $sort  : { [attribute]  : sort_condition }} ,
+        { $skip  : parseInt((page - 1 ) * products_on_page ) },
+        { $limit : products_on_page },
+      ]).exec()
+    }else{
+      listProduct = await products.aggregate([
+        { $match : {
+            categories :  { $in : list.map(categories => categories)  }, 
+            product_avg_rating : { $gte : rating },
+          }
+        },
+        {
+          $project : {
+          _id : 1,
+          product_name : 1,
+          product_slug : 1,
+          product_imgs : 1,
+          product_supp_price : 1,
+          product_sold_quantity : 1,
+          product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
+          categories   : 1,
+          category_name: 1
+          }
+        },
+        { $sort  : { [attribute]  : sort_condition }} ,
+        { $skip  : parseInt((page - 1 ) * products_on_page ) },
+        { $limit : products_on_page },
+      ]).exec()
+    }
+    res.send(response(200,listProduct))
+
+  } catch (e) {
+    if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+    else console.log(e)
+  }
+})
 
 // xem thông tin Seller
 var products_on_page = 15
@@ -1375,7 +1545,165 @@ app.post('/api/orders/getList',
     }
   }
 )
+app.post('/api/orders/manage',
+  async (req,res,next)=>{
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(' ')[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){ return res.send(response(403,'',"Error token!.")) }
+      else{
+        if(token === undefined){
+        return res.send(response(401,'',"Undefined TOken!."))
+        }
+        else{
+          req.body['dataUser'] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    try {
+      let { page = 1  , sortBy  } = req.query // default : pop , or sale , price , time create
+      let { status } = req.body
+      let Id_seller = req.body['dataUser'].data._id 
+      const checkExist = await users.findOne({_id : Id_seller}).select("_id").exec()
+      if(checkExist.length == 0){
+        return res.send(response(504,"",'KHông có obiectId này!'))
+      }
 
+      if(sortBy == "time_asc"){
+        sort_condition = 1 // giảm dần : -1  và tăng dần : 1
+        attribute      = "createdAt"
+      }else if(sortBy == "price_asc"){
+        sort_condition = 1
+        attribute      = "order_payment_cost"
+      }else if(sortBy == "price_desc"){
+        sort_condition = -1
+        attribute      = "order_payment_cost"
+      }
+      else{
+        sort_condition = -1
+        attribute      = "createdAt"
+      }
+
+      let listORDERS 
+      if(status.trim() != ''){
+        listORDERS = await orders.aggregate([
+          { $match :{ staff_id : new ObjectId(Id_seller) , order_status : status } }, 
+          {
+            $project : {
+            _id : 1,
+            customer_id : 1,
+            staff_id    : 1,
+            order_buyer : 1,
+            order_payment_cost : 1,
+            order_status : 1,
+            createdAt    : 1,
+            }
+          },
+          { $sort  : { [attribute]  : sort_condition }} ,
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page },
+        ]).exec()
+      }else{
+        listORDERS = await orders.aggregate([
+          { $match :{ staff_id : new ObjectId(Id_seller) } }, 
+          {
+            $project : {
+            _id : 1,
+            customer_id : 1,
+            staff_id    : 1,
+            order_buyer : 1,
+            order_payment_cost : 1,
+            order_status : 1,
+            createdAt    : 1,
+            }
+          },
+          { $sort  : { [attribute]  : sort_condition }} ,
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page },
+        ]).exec()
+      }
+      res.send(response(200,listORDERS))
+    } catch (e) {
+      if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+      else console.log(e)
+    }
+})
+app.post('/api/orders/manage/update',
+  async (req,res,next)=>{
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(' ')[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){ return res.send(response(403,'',"Error token!.")) }
+      else{
+        if(token === undefined){
+        return res.send(response(401,'',"Undefined TOken!."))
+        }
+        else{
+          req.body['dataUser'] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    try {
+      let { status , order_id } = req.body
+      let Id_seller = req.body['dataUser'].data._id 
+      const checkExist = await users.findOne({_id : Id_seller}).select("_id").exec()
+      if(checkExist.length == 0){
+        return res.send(response(504,"",'KHông có obiectId này!'))
+      }
+
+      if(status.trim() != ''){
+        let orderAfter_update = await orders.findOneAndUpdate(
+          { _id : new mongoose.Types.ObjectId(order_id) },
+          { $set : { order_status : status } },
+          { new : true }
+        ).exec()
+        res.send(response(200,orderAfter_update))
+      }
+    } catch (e) {
+      if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+      else console.log(e)
+    }
+})
+
+app.post('/api/orders/detailForSeller',
+  async (req,res,next) => {
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(" ")[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){
+        return res.send(response(404,'',"Error while validating your Token"))
+      }
+      else{
+        if(decoded === undefined){
+          return res.send(response(404,'',"Your Token is undefined"))
+        }
+        else{
+          req.body["decoded"] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    try {
+      let { orders_ID }  = req.body 
+      const detailOrder = await orders.findOne({_id : orders_ID}).exec()
+      res.send(response(200,detailOrder))
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
+  }
+)
 
 
 // đừng đụng tới 
@@ -1383,8 +1711,6 @@ app.post('/api/ttt',
   async (req,res)=>{
     try {
       let { product_id,variant_id }  = req.body 
-      // console.log(product_id);
-      // console.log(variant_id);
       const productsInfor = await products
       .findOne({_id : new mongoose.Types.ObjectId(product_id)})
       .select("_id product_name product_sold_quantity product_variants sort userID categories category_name createdAt")
@@ -1422,7 +1748,7 @@ app.post('/api/orders/detail',
     try {
       let customer_id  = req.body["decoded"].data._id 
       let { orders_ID }  = req.body //Paginagation
-      const detailOrder = await orders.find({_id : orders_ID}).exec()
+      const detailOrder = await orders.findOne({_id : orders_ID}).exec()
       res.send(response(200,detailOrder))
     } catch (error) {
       if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
@@ -1606,9 +1932,10 @@ app.post('/api/reviews/update',
 
 
 
-app.get('/api/products/search', async(req,res)=>{
+app.post('/api/products/search', async(req,res)=>{
   try {
-    let { search_query,sortBy,page = 1 } = req.query
+    let { search_query,sortBy,page = 1  } = req.query
+    let { rating = 0 , detail }  = req.body
     let sort_condition
     let attribute
     sortBy.trim()
@@ -1631,24 +1958,56 @@ app.get('/api/products/search', async(req,res)=>{
       attribute      = "product_avg_rating"
     }
 
-    const searching = await products.aggregate([
-      { $match : 
-        { $text: { $search: search_query , }} 
-      },
-      { $project :  {
-        _id                    : 1,
-        product_name           : 1,
-        product_sold_quantity  : 1,
-        product_avg_rating     : 1,
-        product_imgs           : 1,
-        review_count           : 1,
-        product_supp_price     : 1,
-        score: { $meta: "textScore" }
-      }},
-      { $sort  : { [attribute]  : sort_condition , score : {$meta : "textScore"}}} , // Trường score: Thêm trường score để lưu trữ điểm số tìm kiếm văn bản từ MongoDB.
-      { $skip  : parseInt((page - 1 ) * products_on_page ) },
-      { $limit : products_on_page } 
-    ]).exec()
+    let searching
+    if(detail.name != ''){
+      searching = await products.aggregate([
+        { $match : 
+          {
+            $text: { $search: search_query },
+            product_details : {
+              $elemMatch : { name : detail.name , value : detail.value }
+            },
+            product_avg_rating : { $gte : rating}
+          } 
+        },
+        { $project :  {
+          _id                    : 1,
+          product_name           : 1,
+          product_sold_quantity  : 1,
+          product_avg_rating     : 1,
+          product_imgs           : 1,
+          review_count           : 1,
+          product_supp_price     : 1,
+          score: { $meta: "textScore" }
+        }},
+        { $sort  : { [attribute]  : sort_condition , score : {$meta : "textScore"}}} , // Trường score: Thêm trường score để lưu trữ điểm số tìm kiếm văn bản từ MongoDB.
+        { $skip  : parseInt((page - 1 ) * products_on_page ) },
+        { $limit : products_on_page } 
+      ]).exec()
+    }
+    else{
+      searching = await products.aggregate([
+        { $match : 
+          {
+            $text: { $search: search_query },
+            product_avg_rating : { $gte : rating}
+          } 
+        },
+        { $project :  {
+          _id                    : 1,
+          product_name           : 1,
+          product_sold_quantity  : 1,
+          product_avg_rating     : 1,
+          product_imgs           : 1,
+          review_count           : 1,
+          product_supp_price     : 1,
+          score: { $meta: "textScore" }
+        }},
+        { $sort  : { [attribute]  : sort_condition , score : {$meta : "textScore"}}} , // Trường score: Thêm trường score để lưu trữ điểm số tìm kiếm văn bản từ MongoDB.
+        { $skip  : parseInt((page - 1 ) * products_on_page ) },
+        { $limit : products_on_page } 
+      ]).exec()
+    }
 
     res.send(response(200, searching))
   } catch (error) {
@@ -1682,7 +2041,7 @@ app.get('/api/products/recommendToken',
     try {
         let sortUser = req.body["decoded"].data.sort
         let path = "http://127.0.0.1:5000/api/model_cola";
-        let queryObj = { "num_recommender": 10 , "user_index" : sortUser };
+        let queryObj = { "num_recommender": 17 , "user_index" : sortUser };
         let arrayProduct = [];
 
         // Sử dụng await để đợi axios.post hoàn thành
@@ -1706,6 +2065,8 @@ app.get('/api/products/recommendToken',
             }
           },
         ]).exec();
+        // console.log(recommend.length);
+
         res.send(response(200, recommend));
     } catch (error) {
       if (error.errorResponse) return res.send(response(error.errorResponse.code, '', error.errorResponse.errmsg));
@@ -1717,7 +2078,7 @@ app.get('/api/products/recommend',
   async (req, res) => {
     try {
         let path = "http://127.0.0.1:5000/api/rank_base";
-        let queryObj = { "n_product": 10 };
+        let queryObj = { "n_product": 20 };
         let arrayProduct = [];
         const responsee = await axios.post(path, queryObj);
         arrayProduct = responsee.data.data;

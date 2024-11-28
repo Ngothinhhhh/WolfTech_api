@@ -1,11 +1,3 @@
--*(back) Có 2 trang thái là "Processing" , "Successfull". 
-    + TRong phần lịch sử chỉ hiển thị ra trang thái "Successfull" thôi, 
-    + CÒn trong phần reviews, sẽ hiển thị ra phần là "Processing" để cho mọi người đánh giá.
-        ==> Sau khi đánh giá xong chuyển status thaành phần là "Successfull".
-    +(front) Giao diện thêm 1 component con trong phần profile là phần Đánh giá .
--(back) Update lại số lượng length của cart. 
--(back) Hiển t ==hị giao diện review trong trang product detail.
--(back) Viết truy vấn tìm kiếm và show ra trong shop list. ( có áp dụng indexing, và aggregation, kèm các query truy vấn.)
 
 
 
@@ -15,13 +7,9 @@
 - Reviews
 
 
--Nghiên cứu và lọc dữ l,iệu bên python : tìm hiểu xem nếu trùng user và trùfng sản phẩm , nhưng khác rating thì sẽ xử lí làm sao.
-- kèm theo chạy dữ leieuj thật;.
 
-- Áp dụng Cloudinary vào việc luw trữ hình ảnh .
 
 
 - reduce()
 - slice()
 
-// 20 user, 14 product, và mỗi người mua tầm 3 cái là ít nhất.
