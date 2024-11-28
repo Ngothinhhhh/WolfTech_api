@@ -28,8 +28,7 @@ const categorySchema = new Schema({
 
 // Tạo chỉ mục cho createdAt
 categorySchema.index({ createdAt: 1 });
-categorySchema.index({ parentCategory: "text" });
-
+categorySchema.index({ 'parentCategory.name': 1 }); // Tạo chỉ mục cho parentCategory.name
 
 
 module.exports = mongoose.model("categories", categorySchema);

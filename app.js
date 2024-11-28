@@ -312,6 +312,7 @@ app.post('/api/category/create',
   }
  }
 )
+
 app.post('/api/category/getlistCategory' , async (req,res)=>{
   let { Id_seller } = req.body
   var check = ObjectId.isValid(Id_seller)
@@ -321,6 +322,7 @@ app.post('/api/category/getlistCategory' , async (req,res)=>{
   const dataCategory = await categories.find({ userID : Id_seller}).select("category_name").exec()
   res.send(response(200 , dataCategory))
 })
+
 let category_on_page = 5
 app.post('/api/category',
   async (req,res,next)=>{
@@ -415,15 +417,43 @@ app.post('/api/category/delete' ,
   }
 )
 
-app.post('/api/category/getAllCategory' , async (req,res)=>{
-  const dataCategory = await categories.find({}).select("category_name").exec()
-  res.send(response(200 , dataCategory))
+app.post('/api/category/getAllCategory' ,
+  async (req,res,next)=>{
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(401,'',"Fill your token pls !"))
+    token = token.split(' ')[1]
+    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
+      if(err){ return res.send(response(403,'',"Error token!.")) }
+      else{
+        if(token === undefined){
+        return res.send(response(401,'',"Undefined TOken!."))
+        }
+        else{
+          req.body['dataUser'] = decoded
+          next()
+        }
+      }
+    });
+  },
+  async (req,res)=>{
+    let  Id_seller  = req.body['dataUser'].data._id    
+    const dataCategory = await categories.find({userID : new mongoose.Types.ObjectId(Id_seller) }).select("category_name").exec()
+    res.send(response(200 , dataCategory))
+  }
+)
+
+app.post('/api/category/products' , async(req,res)=>{
+  let {search_query_category} = req.body
+  if(search_query_category.trim() == '' ){
+    return res.send(response(504, '' ," Null search_query_category."))
+  }
+  const list = await categories.find({ 'parentCategory.name': search_query_category }).exec()
+  res.send(response(200,list))
 })
 
 /*
 + Validate image jpg or png in Angular
  */
-
 
 // xem thông tin Seller
 var products_on_page = 15
@@ -693,9 +723,6 @@ app.post('/api/product/create',
      
      let img_product = req.files['img_product']
      let product_variants_img = req.files["product_variants_img"] 
-//      console.log(img_product);
-//      console.log(product_variants_img);
-// return
      
      //let product_variants = JSON.stringify(req.body.product_variants) //if not parse to JSON, it will a String, not a Object Array
      product_variants = JSON.parse(product_variants) //if not parse to JSON, it will a String, not a Object Array
@@ -759,7 +786,6 @@ app.post('/api/product/create',
        category_name       : checkCategories.category_name,               // khi truy vấn thì ko cần truy vấn tới Collection khác, tăng truy vấn tại đây
        product_supp_price  : product_supp_price,
      }   
-
 
      const dataProduct = await products.create(data)
      res.send(response(200,dataProduct))
