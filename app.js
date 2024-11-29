@@ -417,94 +417,6 @@ app.post('/api/category/delete' ,
   }
 )
 
-app.post('/api/orders/manage',
-  async (req,res,next)=>{
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(' ')[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){ return res.send(response(403,'',"Error token!.")) }
-      else{
-        if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-        }
-        else{
-          req.body['dataUser'] = decoded
-          next()
-        }
-      }
-    });
-  },
-  async (req,res)=>{
-    try {
-      let { page = 1  , sortBy  } = req.query // default : pop , or sale , price , time create
-      let { status } = req.body
-      let Id_seller = req.body['dataUser'].data._id 
-      const checkExist = await users.findOne({_id : Id_seller}).select("_id").exec()
-      if(checkExist.length == 0){
-        return res.send(response(504,"",'KHông có obiectId này!'))
-      }
-
-      if(sortBy == "time_asc"){
-        sort_condition = 1 // giảm dần : -1  và tăng dần : 1
-        attribute      = "createdAt"
-      }else if(sortBy == "price_asc"){
-        sort_condition = 1
-        attribute      = "order_payment_cost"
-      }else if(sortBy == "price_desc"){
-        sort_condition = -1
-        attribute      = "order_payment_cost"
-      }
-      else{
-        sort_condition = -1
-        attribute      = "createdAt"
-      }
-
-      let listORDERS 
-      if(status.trim() != ''){
-        listORDERS = await orders.aggregate([
-          { $match :{ staff_id : new ObjectId(Id_seller) , order_status : status } }, 
-          {
-            $project : {
-            _id : 1,
-            customer_id : 1,
-            staff_id    : 1,
-            order_buyer : 1,
-            order_payment_cost : 1,
-            order_status : 1,
-            createdAt    : 1,
-            }
-          },
-          { $sort  : { [attribute]  : sort_condition }} ,
-          { $skip  : parseInt((page - 1 ) * products_on_page ) },
-          { $limit : products_on_page },
-        ]).exec()
-      }else{
-        listORDERS = await orders.aggregate([
-          { $match :{ staff_id : new ObjectId(Id_seller) } }, 
-          {
-            $project : {
-            _id : 1,
-            customer_id : 1,
-            staff_id    : 1,
-            order_buyer : 1,
-            order_payment_cost : 1,
-            order_status : 1,
-            createdAt    : 1,
-            }
-          },
-          { $sort  : { [attribute]  : sort_condition }} ,
-          { $skip  : parseInt((page - 1 ) * products_on_page ) },
-          { $limit : products_on_page },
-        ]).exec()
-      }
-      res.send(response(200,listORDERS))
-    } catch (e) {
-      if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
-      else console.log(e)
-    }
-})
-
 // for seller 
 app.post('/api/category/getAllCategory' ,
   async (req,res,next)=>{
@@ -1598,14 +1510,16 @@ app.post('/api/orders/manage',
             customer_id : 1,
             staff_id    : 1,
             order_buyer : 1,
+            order_total_cost : 1 ,
+            order_shipping_cost : 1 ,
             order_payment_cost : 1,
             order_status : 1,
             createdAt    : 1,
             }
           },
           { $sort  : { [attribute]  : sort_condition }} ,
-          { $skip  : parseInt((page - 1 ) * products_on_page ) },
-          { $limit : products_on_page },
+          { $skip  : parseInt((page - 1 ) * 6 ) },
+          { $limit : 6 },
         ]).exec()
       }else{
         listORDERS = await orders.aggregate([
@@ -1616,14 +1530,16 @@ app.post('/api/orders/manage',
             customer_id : 1,
             staff_id    : 1,
             order_buyer : 1,
+            order_total_cost : 1 ,
+            order_shipping_cost : 1 ,
             order_payment_cost : 1,
             order_status : 1,
             createdAt    : 1,
-            }
+          }
           },
           { $sort  : { [attribute]  : sort_condition }} ,
-          { $skip  : parseInt((page - 1 ) * products_on_page ) },
-          { $limit : products_on_page },
+          { $skip  : parseInt((page - 1 ) * 6 ) },
+          { $limit : 6 },
         ]).exec()
       }
       res.send(response(200,listORDERS))
@@ -1632,7 +1548,8 @@ app.post('/api/orders/manage',
       else console.log(e)
     }
 })
-app.post('/api/orders/manage/update',
+
+app.post('/api/orders/manage/update',  
   async (req,res,next)=>{
     var token = req.headers['authorization']
     if(!token) return res.send(response(401,'',"Fill your token pls !"))
@@ -1888,7 +1805,7 @@ app.post('/api/reviews/getList',
   async (req,res)=>{
     try {
       let { page = 1, product_id }  = req.body //Paginagation
-      reviews_on_page = 7
+      reviews_on_page = 5
 
       const listReviews = await reviews.aggregate([
         {$match : {product_id : new mongoose.Types.ObjectId(product_id)}},
