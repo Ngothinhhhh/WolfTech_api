@@ -41,6 +41,9 @@ const products = require('./schema/productsSchema')
 const categories = require('./schema/categoriesSchema')
 const orders = require('./schema/ordersSchema')
 const reviews = require('./schema/reviewsSchema')
+
+// Midleware 
+const authentication = require('./middleware/authentication'); // Import the middleware
 // các hàm như create, update, sẽ được dùng thông qua các model không phải các Schema
 
 // validate email
@@ -172,8 +175,8 @@ app.post('/api/user/create', upload.single('avatar') , async(req, res) => {
 })
 
 //nhận vào 2 tham số email, password -> validate -> truy vấn Db users -> dùng hàm compare() so sánh với mật khẩu và check email -> thông báo login thành công và sau đó cung cấp 1 Token cho người này -> fornt end sex lưu trữ ở trên LocalStorage
-app.post('/api/user/login' , async (req,res)=>{
-  try {
+app.post('/api/user/login' ,
+  async (req,res)=>{  try {
     var { user_email , user_password } = req.body
     if (!validator.isEmail(user_email)) {
       return res.send(response(504, '', "Invalid email!"));
@@ -210,27 +213,10 @@ app.post('/api/user/login' , async (req,res)=>{
   }
 })
 
-app.post('/api/user/infor' ,
-  async (req,res,next)=>{
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(' ')[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){ return res.send(response(403,'',"Error token!.")) }
-      else{
-        if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-        }
-        else{
-          req.body["dataUser"] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/user/infor', authentication,
   async (req,res)=>{
     try {
-      let userID = req.body["dataUser"].data._id
+      let userID = req.body["decoded"].data._id
       const userINFOR = await users.findOne( {_id : new mongoose.Types.ObjectId(userID)}).exec()
       res.send(response(200,userINFOR))
     } catch (e) {
@@ -240,51 +226,28 @@ app.post('/api/user/infor' ,
   }
 )
 // 1 hàm checkToken return true or false
-app.get('/api/checkToken', async (req, res)=>{
-  var token = req.headers['authorization']
-  if(!token) return res.send(response(404,'',"Fill your Token"))
-  token = token.split(" ")[1]
-  jwt.verify( token, process.env.SECRETKEY , function(err, decoded) {
-    if (err) {
-      return res.send(response(401,'',"Token is expired Error."))
-    }else{
-      return res.send(response(200, decoded))
-    }
-  }); 
+app.get('/api/checkToken',
+  async (req, res)=>{
+    var token = req.headers['authorization']
+    if(!token) return res.send(response(404,'',"Fill your Token"))
+    token = token.split(" ")[1]
+    jwt.verify( token, process.env.SECRETKEY , function(err, decoded) {
+      if (err) {
+        return res.send(response(401,'',"Token is expired Error."))
+      }else{
+        return res.send(response(200, decoded))
+      }
+    }); 
 })
 
-app.post('/api/category/create',
- async (req,res,next)=>{
-  var token = req.headers['authorization']
-  if (!token) {
-    return res.send(response(401,'',"Fill TOken!."))
-  }
-  token = token.split(' ')[1]
-  jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-    if(err){
-      return res.send(response(401,'',"Error TOken!."))
-    }
-    else{
-      if(token === undefined){
-      return res.send(response(401,'',"Undefined TOken!."))
-      }
-      else{
-        next()
-      }
-    }
-  });
- },
+app.post('/api/category/create', authentication,
  async (req,res)=>{
-  try {
-    var token = req.headers['authorization']
-    token = token.split(' ')[1]
-    var decoded = jwt.verify(token, process.env.SECRETKEY);
-    
+  try {    
     let { category_name  , s_descrip, parentCategory  } = req.body
     if(category_name === undefined || category_name.trim() == '' ) return res.send(response(504,'',"Nhập lại Name của Category này!."))
     if(s_descrip === undefined || s_descrip.trim() == '' )         return res.send(response(504,'',"Nhập lại SHort Description của Category này!."))
 
-    req.body['userID']   = decoded.data._id    
+    req.body['userID']   = req.body["decoded"].data._id       
     req.body['category_name']   = category_name
     req.body['category_slug']   = ChangeToSlug(category_name)
     req.body['parentCategory']    = parentCategory
@@ -313,40 +276,25 @@ app.post('/api/category/create',
  }
 )
 
-app.post('/api/category/getlistCategory' , async (req,res)=>{
-  let { Id_seller } = req.body
-  var check = ObjectId.isValid(Id_seller)
-  if(check === false){
-    return res.send(response(504, '' ," KHong phải là ObjectId."))
-  }
-  const dataCategory = await categories.find({ userID : Id_seller}).select("category_name").exec()
-  res.send(response(200 , dataCategory))
-})
+app.post('/api/category/getlistCategory' ,
+  async (req,res)=>{
+    let { Id_seller } = req.body
+    var check = ObjectId.isValid(Id_seller)
+    if(check === false){
+      return res.send(response(504, '' ," KHong phải là ObjectId."))
+    }
+    const dataCategory = await categories.find({ userID : Id_seller}).select("category_name").exec()
+    res.send(response(200 , dataCategory))
+ }
+)
 
 let category_on_page = 5
-app.post('/api/category',
-  async (req,res,next)=>{
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(' ')[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){ return res.send(response(403,'',"Error token!.")) }
-      else{
-        if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-        }
-        else{
-          req.body['dataUser'] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/category', authentication,
   async (req,res)=>{
     try {
       let { page = 1 } = req.query // default : pop , or sale , price , time create
       // page = 1 nếu không cung cấp tham số page
-      let Id_seller = req.body["dataUser"].data._id     
+      let Id_seller = req.body["decoded"].data._id     
 
       var check = ObjectId.isValid(Id_seller)
       if(check === false ){
@@ -381,24 +329,7 @@ app.post('/api/category',
     }
   }
 )
-app.post('/api/category/delete' ,
-  async (req,res,next)=>{
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(' ')[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){ return res.send(response(403,'',"Error token!.")) }
-      else{
-        if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-        }
-        else{
-          req.dataUser = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/category/delete' , authentication ,
   async (req,res)=>{
     try {
       let { categoriesID } = req.body
@@ -418,235 +349,204 @@ app.post('/api/category/delete' ,
 )
 
 // for seller 
-app.post('/api/category/getAllCategory' ,
-  async (req,res,next)=>{
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(' ')[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){ return res.send(response(403,'',"Error token!.")) }
-      else{
-        if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-        }
-        else{
-          req.body['dataUser'] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/category/getAllCategory' , authentication,
   async (req,res)=>{
-    let  Id_seller  = req.body['dataUser'].data._id    
+    let  Id_seller  = req.body['decoded'].data._id    
     const dataCategory = await categories.find({userID : new mongoose.Types.ObjectId(Id_seller) }).select("category_name").exec()
     res.send(response(200 , dataCategory))
   }
 )
 
-app.post('/api/category/products' , async(req,res)=>{
-  try {
-    let { search_query_category , sortBy , page = 1 , rating = 0 , detail } = req.body
-    let attribute
-    let sort_condition
+app.post('/api/category/products' ,
+  async(req,res)=>{
+    try {
+      let { search_query_category , sortBy , page = 1 , rating = 0 , detail } = req.body
+      let attribute
+      let sort_condition
 
-    if(search_query_category.trim() == '' ){
-      return res.send(response(504, '' ," Null search_query_category."))
-    }
-    const listID_category = await categories.find({ 'parentCategory.name': search_query_category }).select("_id").exec()
-    let list = []
-    for(let ID of listID_category){
-      list.push(ID._id)
-    } 
-    
-    if(sortBy == "time_desc"){
-      sort_condition = -1 // giảm dần : -1  và tăng dần : 1
-      attribute      = "createdAt"
-    }else if(sortBy == "sales"){
-      sort_condition = -1
-      attribute      = "product_sold_quantity"
-    }else if(sortBy == "price_asc"){
-      sort_condition = 1
-      attribute      = "product_supp_price"  
-    }else if(sortBy == "price_desc"){
-      sort_condition = -1
-      attribute      = "product_supp_price"  
-    }
-    else{
-      sort_condition = -1
-      attribute      = "product_avg_rating"
-    }
-    
-    let listProduct
-    if(detail.name != ''){
-      listProduct = await products.aggregate([
-        { $match : {
-            categories :  { $in : list.map(categories => categories)  }, 
-            product_details : {
-              $elemMatch : { name : detail.name , value : detail.value }
-            },
-            product_avg_rating : { $gte : rating },
-          }
-        },
-        {
-          $project : {
-          _id : 1,
-          product_name : 1,
-          product_slug : 1,
-          product_imgs : 1,
-          product_supp_price : 1,
-          product_sold_quantity : 1,
-          product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
-          categories   : 1,
-          category_name: 1
-          }
-        },
-        { $sort  : { [attribute]  : sort_condition }} ,
-        { $skip  : parseInt((page - 1 ) * products_on_page ) },
-        { $limit : products_on_page },
-      ]).exec()
-    }else{
-      listProduct = await products.aggregate([
-        { $match : {
-            categories :  { $in : list.map(categories => categories)  }, 
-            product_avg_rating : { $gte : rating },
-          }
-        },
-        {
-          $project : {
-          _id : 1,
-          product_name : 1,
-          product_slug : 1,
-          product_imgs : 1,
-          product_supp_price : 1,
-          product_sold_quantity : 1,
-          product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
-          categories   : 1,
-          category_name: 1
-          }
-        },
-        { $sort  : { [attribute]  : sort_condition }} ,
-        { $skip  : parseInt((page - 1 ) * products_on_page ) },
-        { $limit : products_on_page },
-      ]).exec()
-    }
-    res.send(response(200,listProduct))
+      if(search_query_category.trim() == '' ){
+        return res.send(response(504, '' ," Null search_query_category."))
+      }
+      const listID_category = await categories.find({ 'parentCategory.name': search_query_category }).select("_id").exec()
+      let list = []
+      for(let ID of listID_category){
+        list.push(ID._id)
+      } 
+      
+      if(sortBy == "time_desc"){
+        sort_condition = -1 // giảm dần : -1  và tăng dần : 1
+        attribute      = "createdAt"
+      }else if(sortBy == "sales"){
+        sort_condition = -1
+        attribute      = "product_sold_quantity"
+      }else if(sortBy == "price_asc"){
+        sort_condition = 1
+        attribute      = "product_supp_price"  
+      }else if(sortBy == "price_desc"){
+        sort_condition = -1
+        attribute      = "product_supp_price"  
+      }
+      else{
+        sort_condition = -1
+        attribute      = "product_avg_rating"
+      }
+      
+      let listProduct
+      if(detail.name != ''){
+        listProduct = await products.aggregate([
+          { $match : {
+              categories :  { $in : list.map(categories => categories)  }, 
+              product_details : {
+                $elemMatch : { name : detail.name , value : detail.value }
+              },
+              product_avg_rating : { $gte : rating },
+            }
+          },
+          {
+            $project : {
+            _id : 1,
+            product_name : 1,
+            product_slug : 1,
+            product_imgs : 1,
+            product_supp_price : 1,
+            product_sold_quantity : 1,
+            product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
+            categories   : 1,
+            category_name: 1
+            }
+          },
+          { $sort  : { [attribute]  : sort_condition }} ,
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page },
+        ]).exec()
+      }else{
+        listProduct = await products.aggregate([
+          { $match : {
+              categories :  { $in : list.map(categories => categories)  }, 
+              product_avg_rating : { $gte : rating },
+            }
+          },
+          {
+            $project : {
+            _id : 1,
+            product_name : 1,
+            product_slug : 1,
+            product_imgs : 1,
+            product_supp_price : 1,
+            product_sold_quantity : 1,
+            product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
+            categories   : 1,
+            category_name: 1
+            }
+          },
+          { $sort  : { [attribute]  : sort_condition }} ,
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page },
+        ]).exec()
+      }
+      res.send(response(200,listProduct))
 
-  } catch (e) {
-    if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
-    else console.log(e)
-  }
+    } catch (e) {
+      if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+      else console.log(e)
+    }
 })
 
 // xem thông tin Seller
 var products_on_page = 15
-app.post('/api/product/shop', async (req,res)=>{
-  try {
-    let { page = 1  , sortBy } = req.query // default : pop , or sale , price , time create
-    // page = 1 nếu không cung cấp tham số page
-    let {Id_seller,category_id} = req.body
-    let sort_condition 
-    let attribute
+app.post('/api/product/shop',
+  async (req,res)=>{
+    try {
+      let { page = 1  , sortBy } = req.query // default : pop , or sale , price , time create
+      // page = 1 nếu không cung cấp tham số page
+      let {Id_seller,category_id} = req.body
+      let sort_condition 
+      let attribute
 
-    var check = ObjectId.isValid(Id_seller)
-    if(check === false ){
-      return res.send(response(504, '' ," KHong phải là ObjectId."))
-    }
-    const checkExist = await users.findOne({_id : Id_seller}).select("user_name avatar user_phone user_address createdAt").exec()
-    if(checkExist.length == 0){
-      return res.send(response(504,"",'KHông có obiectId này!'))
-    }
-
-    if(sortBy == "time_desc"){
-      sort_condition = -1 // giảm dần : -1  và tăng dần : 1
-      attribute      = "createdAt"
-    }else if(sortBy == "sales"){
-      sort_condition = -1
-      attribute      = "product_sold_quantity"
-    }else if(sortBy == "price_asc"){
-      sort_condition = 1
-      attribute      = "product_supp_price"  
-    }else if(sortBy == "price_desc"){
-      sort_condition = -1
-      attribute      = "product_supp_price"  
-    }
-    else{
-      sort_condition = -1
-      attribute      = "product_avg_rating"
-    }
-
-    let listProduct    
-    if(category_id.trim() != ''){      
-      listProduct = await products.aggregate([
-        { $match :{ userID : new ObjectId(Id_seller) ,categories : new ObjectId(category_id) } }, // tại đây, phải có new ObjectId để xác định đây là Id của users mới được, còn không sẽ không ra kết quả nào.
-        {
-          $project : {
-          _id : 1,
-          product_name : 1,
-          product_slug : 1,
-          product_imgs : 1,
-          product_supp_price : 1,
-          product_sold_quantity : 1,
-          product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
-          categories   : 1, // ở đây nếu không lọc ra thì ở dưới _id của $group sẽ bằng null
-          category_name: 1
-          }
-        },
-        { $sort  : { [attribute]  : sort_condition }} ,
-        { $skip  : parseInt((page - 1 ) * products_on_page ) },
-        { $limit : products_on_page },
-      ]).exec()
-    }
-    else{
-      listProduct = await products.aggregate([
-        { $match :{ userID : new ObjectId(Id_seller) ,} }, // tại đây, phải có new ObjectId để xác định đây là Id của users mới được, còn không sẽ không ra kết quả nào.
-        {
-          $project : {
-          _id : 1,
-          product_name : 1,
-          product_slug : 1,
-          product_imgs : 1,
-          product_supp_price : 1,
-          product_sold_quantity : 1,
-          product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
-          categories   : 1, // ở đây nếu không lọc ra thì ở dưới _id của $group sẽ bằng null
-          category_name: 1
-          }
-        },
-        { $sort  : { [attribute]  : sort_condition }} ,
-        { $skip  : parseInt((page - 1 ) * products_on_page ) },
-        { $limit : products_on_page },
-      ]).exec()
-    }
-    
-    const data = {
-      listProduct : listProduct,
-      dataUser    : checkExist
-    }
-    res.send(response(200,data))
-  } catch (e) {
-    if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
-    else console.log(e)
-  }
-})
-
-app.post('/api/product/manage',
-  async (req,res,next)=>{
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(' ')[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){ return res.send(response(403,'',"Error token!.")) }
-      else{
-        if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-        }
-        else{
-          req.body['dataUser'] = decoded
-          next()
-        }
+      var check = ObjectId.isValid(Id_seller)
+      if(check === false ){
+        return res.send(response(504, '' ," KHong phải là ObjectId."))
       }
-    });
-  },
+      const checkExist = await users.findOne({_id : Id_seller}).select("user_name avatar user_phone user_address createdAt").exec()
+      if(checkExist.length == 0){
+        return res.send(response(504,"",'KHông có obiectId này!'))
+      }
+
+      if(sortBy == "time_desc"){
+        sort_condition = -1 // giảm dần : -1  và tăng dần : 1
+        attribute      = "createdAt"
+      }else if(sortBy == "sales"){
+        sort_condition = -1
+        attribute      = "product_sold_quantity"
+      }else if(sortBy == "price_asc"){
+        sort_condition = 1
+        attribute      = "product_supp_price"  
+      }else if(sortBy == "price_desc"){
+        sort_condition = -1
+        attribute      = "product_supp_price"  
+      }
+      else{
+        sort_condition = -1
+        attribute      = "product_avg_rating"
+      }
+
+      let listProduct    
+      if(category_id.trim() != ''){      
+        listProduct = await products.aggregate([
+          { $match :{ userID : new ObjectId(Id_seller) ,categories : new ObjectId(category_id) } }, // tại đây, phải có new ObjectId để xác định đây là Id của users mới được, còn không sẽ không ra kết quả nào.
+          {
+            $project : {
+            _id : 1,
+            product_name : 1,
+            product_slug : 1,
+            product_imgs : 1,
+            product_supp_price : 1,
+            product_sold_quantity : 1,
+            product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
+            categories   : 1, // ở đây nếu không lọc ra thì ở dưới _id của $group sẽ bằng null
+            category_name: 1
+            }
+          },
+          { $sort  : { [attribute]  : sort_condition }} ,
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page },
+        ]).exec()
+      }
+      else{
+        listProduct = await products.aggregate([
+          { $match :{ userID : new ObjectId(Id_seller) ,} }, // tại đây, phải có new ObjectId để xác định đây là Id của users mới được, còn không sẽ không ra kết quả nào.
+          {
+            $project : {
+            _id : 1,
+            product_name : 1,
+            product_slug : 1,
+            product_imgs : 1,
+            product_supp_price : 1,
+            product_sold_quantity : 1,
+            product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
+            categories   : 1, // ở đây nếu không lọc ra thì ở dưới _id của $group sẽ bằng null
+            category_name: 1
+            }
+          },
+          { $sort  : { [attribute]  : sort_condition }} ,
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page },
+        ]).exec()
+      }
+      
+      const data = {
+        listProduct : listProduct,
+        dataUser    : checkExist
+      }
+      res.send(response(200,data))
+    } catch (e) {
+      if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
+      else console.log(e)
+    }
+  }
+)
+
+app.post('/api/product/manage', authentication ,
   async (req,res)=>{
     try {
       let { page = 1  , sortBy } = req.query // default : pop , or sale , price , time create
@@ -654,7 +554,7 @@ app.post('/api/product/manage',
       let { category_id } = req.body
       let sort_condition 
       let attribute
-      let Id_seller = req.body['dataUser'].data._id 
+      let Id_seller = req.body['decoded'].data._id 
 
       // check Object
       var ObjectId = require("mongoose").Types.ObjectId
@@ -739,24 +639,7 @@ app.post('/api/product/manage',
       else console.log(e)
     }
 })
-app.post('/api/product/delete' ,
-  async (req,res,next)=>{
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(' ')[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){ return res.send(response(403,'',"Error token!.")) }
-      else{
-        if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-        }
-        else{
-          req.dataUser = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/product/delete' , authentication,
   async (req,res)=>{
     try {
       let { productId } = req.body
@@ -774,28 +657,11 @@ app.post('/api/product/delete' ,
     }
   }
 )
-app.post('/api/product/create', 
-  async (req,res,next)=>{
-   var token = req.headers['authorization']
-   if(!token) return res.send(response(401,'',"Fill your token pls !"))
-   token = token.split(' ')[1]
-   jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-     if(err){ return res.send(response(403,'',"Error token!.")) }
-     else{
-       if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-       }
-       else{
-         req.dataUser = decoded
-         next()
-       }
-     }
-   });
-  }
-  ,upload.fields([
+app.post('/api/product/create', upload.fields([
    {name : "img_product", maxCount : 5},
    {name : "product_variants_img" , maxCount : 7}
   ]),
+  authentication,
   async (req, res)=>{
    try {
      let {
@@ -863,7 +729,7 @@ app.post('/api/product/create',
        product_details           : product_details,
        product_variants          : product_variants,
        sort        :  await products.countDocuments().exec() ,
-       userID        :  new mongoose.Types.ObjectId(req.dataUser.data._id) , // thuộc về người sở hữu, người tạo ra sản phẩm này
+       userID        :  new mongoose.Types.ObjectId(req.body['decoded'].data._id ) , // thuộc về người sở hữu, người tạo ra sản phẩm này
        categories          : new mongoose.Types.ObjectId(checkCategories._id), 
        category_name       : checkCategories.category_name,               // khi truy vấn thì ko cần truy vấn tới Collection khác, tăng truy vấn tại đây
        product_supp_price  : product_supp_price,
@@ -879,27 +745,11 @@ app.post('/api/product/create',
  
 )
 app.post('/api/product/update', 
-  async (req,res,next)=>{
-   var token = req.headers['authorization']
-   if(!token) return res.send(response(401,'',"Fill your token pls !"))
-   token = token.split(' ')[1]
-   jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-     if(err){ return res.send(response(403,'',"Error token!.")) }
-     else{
-       if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-       }
-       else{
-         req.dataUser = decoded
-         next()
-       }
-     }
-   });
-  }
-  ,upload.fields([
+  upload.fields([
    {name : "img_product", maxCount : 12},
    {name : "product_variants_img" , maxCount : 12}
   ]),
+  authentication,
   async (req, res)=>{
    try {
      let {
@@ -954,7 +804,7 @@ app.post('/api/product/update',
        product_details           : product_details,
        product_variants          : product_variants,
        sort        :  checkProduct.sort ,
-       userID        :  req.dataUser.data._id , // thuộc về người sở hữu, người tạo ra sản phẩm này
+       userID        :  req.body['decoded'].data._id  , // thuộc về người sở hữu, người tạo ra sản phẩm này
        categories          : new mongoose.Types.ObjectId(checkCategories._id), 
        category_name       : checkCategories.category_name,               // khi truy vấn thì ko cần truy vấn tới Collection khác, tăng truy vấn tại đây
        product_supp_price  : product_supp_price,
@@ -971,27 +821,10 @@ app.post('/api/product/update',
 
 
 //Delete this 
-app.post('/api/product/listProduct',
- async (req,res,next)=>{
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(' ')[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){ return res.send(response(403,'',"Error token!.")) }
-      else{
-        if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-        }
-        else{
-          req.dataUser = decoded
-          next()
-        }
-      }
-    });
- },
+app.post('/api/product/listProduct', authentication,
  async (req,res)=>{
   try {
-    let user_id = req.dataUser.data._id
+    let user_id = req.body['decoded'].data._id 
     let { sortBy } = req.query 
     var page = 1
     var sort_condition
@@ -1063,29 +896,10 @@ app.post('/api/product',
 
 
 
-app.post('/api/user/cart' ,
- async (req,res,next) => {
-  var token = req.headers['authorization']
-  if(!token) return res.send(response(401,'',"Fill your token pls !"))
-  token = token.split(" ")[1]
-  jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-    if(err){
-      return res.send(response(404,'',"Error while validating your Token"))
-    }
-    else{
-      if(decoded === undefined){
-        return res.send(response(404,'',"Your Token is undefined"))
-      }
-      else{
-        req.body["decoded"] = decoded
-        next()
-      }
-    }
-  });
- },
+app.post('/api/user/cart', authentication,
  async (req,res) =>{
   try {
-    var userID = req.body["decoded"].data._id;
+    var userID = req.body["decoded"].data._id; 
     
     var check = ObjectId.isValid(userID);
     if (check == false) {
@@ -1103,9 +917,6 @@ app.post('/api/user/cart' ,
       .lean()
       .exec();
 
-      console.log(checkExist);
-      
-  
     for (let index = 0; index < checkExist[0].cart.length; index++) {
       // Create a deep copy of the current cart item
       let currentElement = JSON.parse(JSON.stringify(checkExist[0].cart[index])); 
@@ -1137,26 +948,7 @@ app.post('/api/user/cart' ,
  }
 )
 // lúc thêm vào giỏ, cần chính xác productId và variantId đó
-app.post('/api/user/cart/create',
-async (req,res,next) => {
-  var token = req.headers['authorization']
-  if(!token) return res.send(response(401,'',"Fill your token pls !"))
-  token = token.split(" ")[1]
-  jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-    if(err){
-      return res.send(response(404,'',"Error while validating your Token"))
-    }
-    else{
-      if(decoded === undefined){
-        return res.send(response(404,'',"Your Token is undefined"))
-      }
-      else{
-        req.body["decoded"] = decoded
-        next()
-      }
-    }
-  });
- },
+app.post('/api/user/cart/create', authentication,
  async (req,res) =>{
   try {
     var userID  = req.body["decoded"].data._id 
@@ -1217,26 +1009,7 @@ async (req,res,next) => {
   }
  }
 )
-app.post('/api/user/cart/delete',
-async (req,res,next) => {
-  var token = req.headers['authorization']
-  if(!token) return res.send(response(401,'',"Fill your token pls !"))
-  token = token.split(" ")[1]
-  jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-    if(err){
-      return res.send(response(404,'',"Error while validating your Token"))
-    }
-    else{
-      if(decoded === undefined){
-        return res.send(response(404,'',"Your Token is undefined"))
-      }
-      else{
-        req.body["decoded"] = decoded
-        next()
-      }
-    }
-  });
- },
+app.post('/api/user/cart/delete', authentication,
  async (req,res) =>{
   try {
     var userID  = req.body["decoded"].data._id 
@@ -1279,26 +1052,7 @@ async (req,res,next) => {
  }
 )
 
-app.post('/api/user/cart/update',
-  async (req,res,next) => {
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(" ")[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){
-        return res.send(response(404,'',"Error while validating your Token"))
-      }
-      else{
-        if(decoded === undefined){
-          return res.send(response(404,'',"Your Token is undefined"))
-        }
-        else{
-          req.body["decoded"] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/user/cart/update', authentication ,
   async (req,res) =>{
     try {
       let userID  = req.body["decoded"].data._id 
@@ -1317,26 +1071,7 @@ app.post('/api/user/cart/update',
 
 
 
-app.post('/api/orders/create',
-  async (req,res,next) => {
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(" ")[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){
-        return res.send(response(404,'',"Error while validating your Token"))
-      }
-      else{
-        if(decoded === undefined){
-          return res.send(response(404,'',"Your Token is undefined"))
-        }
-        else{
-          req.body["decoded"] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/orders/create', authentication,
   async (req,res)=>{
     try {
       let customer_id  = req.body["decoded"].data._id 
@@ -1370,26 +1105,7 @@ app.post('/api/orders/create',
     }
   }
 )
-app.post('/api/orders/deleteCart',
-  async (req,res,next) => {
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(" ")[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){
-        return res.send(response(404,'',"Error while validating your Token"))
-      }
-      else{
-        if(decoded === undefined){
-          return res.send(response(404,'',"Your Token is undefined"))
-        }
-        else{
-          req.body["decoded"] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/orders/deleteCart', authentication,
   async (req,res)=>{
     try {
       let user_id  = req.body["decoded"].data._id 
@@ -1407,79 +1123,67 @@ app.post('/api/orders/deleteCart',
 )
 
 // get list khi chưa đánh giá , và sau khi đánh giá
-app.post('/api/orders/getList',
-  async (req,res,next) => {
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(" ")[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){
-        return res.send(response(404,'',"Error while validating your Token"))
-      }
-      else{
-        if(decoded === undefined){
-          return res.send(response(404,'',"Your Token is undefined"))
-        }
-        else{
-          req.body["decoded"] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/orders/getList', authentication,
   async (req,res)=>{
     try {
       let customer_id  = req.body["decoded"].data._id 
       let { page = 1 , order_status }  = req.body // Successfull,Processing
-
-      const listOrders = await orders.aggregate([
-        {$match :
-           {customer_id : new mongoose.Types.ObjectId(customer_id),
-            order_status : order_status 
-           }},
-        {$project : {
-          _id          : 1,
-          order_status : 1,
-          order_details: 1,
-          order_payment_cost : 1,
-          createdAt    : 1,
-          updatedAt    : 1
-        }},
-        { $sort  : { createdAt : -1 }} ,
-        { $skip  : parseInt((page - 1 ) * products_on_page ) },
-        { $limit : products_on_page },
-      ]).exec()
-
-      res.send(response(200,listOrders))
+      let order_status_array = ["Ordered" , "Shipping" , "Processing" ]
+ 
+      let listOrders 
+      if(order_status == 'Successfull' ){
+        listOrders = await orders.aggregate([
+          {$match :
+             {customer_id : new mongoose.Types.ObjectId(customer_id),
+              order_status : order_status 
+             }},
+          {$project : {
+            _id          : 1,
+            order_status : 1,
+            order_details: 1,
+            order_payment_cost : 1,
+            createdAt    : 1,
+            updatedAt    : 1
+          }},
+          { $sort  : { createdAt : -1 }} ,
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page },
+        ]).exec()
+        res.send(response(200,listOrders))
+      }else{
+        listOrders = await orders.aggregate([
+          {$match :
+            {
+              customer_id : new mongoose.Types.ObjectId(customer_id), 
+              order_status : { $in :  order_status_array.map(order_status => order_status)  }
+            }
+          },
+          {$project : {
+            _id          : 1,
+            order_status : 1,
+            order_details: 1,
+            order_payment_cost : 1,
+            createdAt    : 1,
+            updatedAt    : 1
+          }},
+          { $sort  : { createdAt : -1 }} ,
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page },
+        ]).exec()
+        res.send(response(200,listOrders))
+      }
     } catch (error) {
       if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
       else console.log(error);
     }
   }
 )
-app.post('/api/orders/manage',
-  async (req,res,next)=>{
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(' ')[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){ return res.send(response(403,'',"Error token!.")) }
-      else{
-        if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-        }
-        else{
-          req.body['dataUser'] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/orders/manage', authentication,
   async (req,res)=>{
     try {
       let { page = 1  , sortBy  } = req.query // default : pop , or sale , price , time create
       let { status } = req.body
-      let Id_seller = req.body['dataUser'].data._id 
+      let Id_seller = req.body['decoded'].data._id 
       const checkExist = await users.findOne({_id : Id_seller}).select("_id").exec()
       if(checkExist.length == 0){
         return res.send(response(504,"",'KHông có obiectId này!'))
@@ -1549,28 +1253,11 @@ app.post('/api/orders/manage',
     }
 })
 
-app.post('/api/orders/manage/update',  
-  async (req,res,next)=>{
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(' ')[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){ return res.send(response(403,'',"Error token!.")) }
-      else{
-        if(token === undefined){
-        return res.send(response(401,'',"Undefined TOken!."))
-        }
-        else{
-          req.body['dataUser'] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/orders/manage/update', authentication,
   async (req,res)=>{
     try {
       let { status , order_id } = req.body
-      let Id_seller = req.body['dataUser'].data._id 
+      let Id_seller = req.body['decoded'].data._id 
       const checkExist = await users.findOne({_id : Id_seller}).select("_id").exec()
       if(checkExist.length == 0){
         return res.send(response(504,"",'KHông có obiectId này!'))
@@ -1579,7 +1266,7 @@ app.post('/api/orders/manage/update',
       if(status.trim() != ''){
         let orderAfter_update = await orders.findOneAndUpdate(
           { _id : new mongoose.Types.ObjectId(order_id) },
-          { $set : { order_status : status } },
+          { $set : { order_status : status  } },
           { new : true }
         ).exec()
         res.send(response(200,orderAfter_update))
@@ -1590,26 +1277,7 @@ app.post('/api/orders/manage/update',
     }
 })
 
-app.post('/api/orders/detailForSeller',
-  async (req,res,next) => {
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(" ")[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){
-        return res.send(response(404,'',"Error while validating your Token"))
-      }
-      else{
-        if(decoded === undefined){
-          return res.send(response(404,'',"Your Token is undefined"))
-        }
-        else{
-          req.body["decoded"] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/orders/detailForSeller', authentication,
   async (req,res)=>{
     try {
       let { orders_ID }  = req.body 
@@ -1641,26 +1309,7 @@ app.post('/api/ttt',
     }
   }
 )
-app.post('/api/orders/detail',
-  async (req,res,next) => {
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(" ")[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){
-        return res.send(response(404,'',"Error while validating your Token"))
-      }
-      else{
-        if(decoded === undefined){
-          return res.send(response(404,'',"Your Token is undefined"))
-        }
-        else{
-          req.body["decoded"] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/orders/detail', authentication,
   async (req,res)=>{
     try {
       let customer_id  = req.body["decoded"].data._id 
@@ -1675,33 +1324,14 @@ app.post('/api/orders/detail',
 )
 
 
-app.post('/api/reviews/create', upload.array('review_image',5), 
-  async (req,res,next) => {
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(" ")[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){
-        return res.send(response(404,'',"Error while validating your Token"))
-      }
-      else{
-        if(decoded === undefined){
-          return res.send(response(404,'',"Your Token is undefined"))
-        }
-        else{
-          req.body["decoded"] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.post('/api/reviews/create', upload.array('review_image',5), authentication,
   async (req,res)=>{
     try {
       let user_id  = req.body["decoded"].data._id 
       let user_sort = req.body["decoded"].data.sort
       let review_image = req.files
-      console.log(req.body);
-      // return
+      // console.log(req.body);
+      // // return
       let {
         // review_imgs is a Array Object 
         product_id,product_variants_id,order_id,review_rating,review_context,
@@ -1752,7 +1382,7 @@ app.post('/api/reviews/create', upload.array('review_image',5),
       const newReviews = await reviews.create(req.body)
       const ordersUpdate = await orders.findOneAndUpdate(
         {_id : new mongoose.Types.ObjectId(order_id)},
-        { order_status : "Successfull"}
+        { order_status : "Successfull" , updatedAt : new Date() }
       ).exec()
 
       const updateRating = await reviews.find({product_id : new mongoose.Types.ObjectId(product_id)}).select("review_rating").exec()
@@ -1849,111 +1479,93 @@ app.post('/api/reviews/update',
 
 
 
-app.post('/api/products/search', async(req,res)=>{
-  try {
-    let { search_query,sortBy,page = 1  } = req.query
-    let { rating = 0 , detail }  = req.body
-    let sort_condition
-    let attribute
-    sortBy.trim()
+app.post('/api/products/search',
+  async(req,res)=>{
+    try {
+      let { search_query,sortBy,page = 1  } = req.query
+      let { rating = 0 , detail }  = req.body
+      let sort_condition
+      let attribute
+      sortBy.trim()
 
-    if(sortBy == "time_desc"){
-      sort_condition = -1 // giảm dần : -1  và tăng dần : 1
-      attribute      = "createdAt"
-    }else if(sortBy == "sales"){
-      sort_condition = -1
-      attribute      = "product_sold_quantity"
-    }else if(sortBy == "price_asc"){
-      sort_condition = 1
-      attribute      = "product_supp_price"  
-    }else if(sortBy == "price_desc"){
-      sort_condition = -1
-      attribute      = "product_supp_price"  
-    }
-    else{
-      sort_condition = -1
-      attribute      = "product_avg_rating"
-    }
+      if(sortBy == "time_desc"){
+        sort_condition = -1 // giảm dần : -1  và tăng dần : 1
+        attribute      = "createdAt"
+      }else if(sortBy == "sales"){
+        sort_condition = -1
+        attribute      = "product_sold_quantity"
+      }else if(sortBy == "price_asc"){
+        sort_condition = 1
+        attribute      = "product_supp_price"  
+      }else if(sortBy == "price_desc"){
+        sort_condition = -1
+        attribute      = "product_supp_price"  
+      }
+      else{
+        sort_condition = -1
+        attribute      = "product_avg_rating"
+      }
 
-    let searching
-    if(detail.name != ''){
-      searching = await products.aggregate([
-        { $match : 
-          {
-            $text: { $search: search_query },
-            product_details : {
-              $elemMatch : { name : detail.name , value : detail.value }
-            },
-            product_avg_rating : { $gte : rating}
-          } 
-        },
-        { $project :  {
-          _id                    : 1,
-          product_name           : 1,
-          product_sold_quantity  : 1,
-          product_avg_rating     : 1,
-          product_imgs           : 1,
-          review_count           : 1,
-          product_supp_price     : 1,
-          score: { $meta: "textScore" }
-        }},
-        { $sort  : { [attribute]  : sort_condition , score : {$meta : "textScore"}}} , // Trường score: Thêm trường score để lưu trữ điểm số tìm kiếm văn bản từ MongoDB.
-        { $skip  : parseInt((page - 1 ) * products_on_page ) },
-        { $limit : products_on_page } 
-      ]).exec()
-    }
-    else{
-      searching = await products.aggregate([
-        { $match : 
-          {
-            $text: { $search: search_query },
-            product_avg_rating : { $gte : rating}
-          } 
-        },
-        { $project :  {
-          _id                    : 1,
-          product_name           : 1,
-          product_sold_quantity  : 1,
-          product_avg_rating     : 1,
-          product_imgs           : 1,
-          review_count           : 1,
-          product_supp_price     : 1,
-          score: { $meta: "textScore" }
-        }},
-        { $sort  : { [attribute]  : sort_condition , score : {$meta : "textScore"}}} , // Trường score: Thêm trường score để lưu trữ điểm số tìm kiếm văn bản từ MongoDB.
-        { $skip  : parseInt((page - 1 ) * products_on_page ) },
-        { $limit : products_on_page } 
-      ]).exec()
-    }
+      let searching
+      if(detail.name != ''){
+        searching = await products.aggregate([
+          { $match : 
+            {
+              $text: { $search: search_query },
+              product_details : {
+                $elemMatch : { name : detail.name , value : detail.value }
+              },
+              product_avg_rating : { $gte : rating}
+            } 
+          },
+          { $project :  {
+            _id                    : 1,
+            product_name           : 1,
+            product_sold_quantity  : 1,
+            product_avg_rating     : 1,
+            product_imgs           : 1,
+            review_count           : 1,
+            product_supp_price     : 1,
+            score: { $meta: "textScore" }
+          }},
+          { $sort  : { [attribute]  : sort_condition , score : {$meta : "textScore"}}} , // Trường score: Thêm trường score để lưu trữ điểm số tìm kiếm văn bản từ MongoDB.
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page } 
+        ]).exec()
+      }
+      else{
+        searching = await products.aggregate([
+          { $match : 
+            {
+              $text: { $search: search_query },
+              product_avg_rating : { $gte : rating}
+            } 
+          },
+          { $project :  {
+            _id                    : 1,
+            product_name           : 1,
+            product_sold_quantity  : 1,
+            product_avg_rating     : 1,
+            product_imgs           : 1,
+            review_count           : 1,
+            product_supp_price     : 1,
+            score: { $meta: "textScore" }
+          }},
+          { $sort  : { [attribute]  : sort_condition , score : {$meta : "textScore"}}} , // Trường score: Thêm trường score để lưu trữ điểm số tìm kiếm văn bản từ MongoDB.
+          { $skip  : parseInt((page - 1 ) * products_on_page ) },
+          { $limit : products_on_page } 
+        ]).exec()
+      }
 
-    res.send(response(200, searching))
-  } catch (error) {
-    if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
-    else console.log(error);
-  }
+      res.send(response(200, searching))
+    } catch (error) {
+      if(error.errorResponse) return res.send(response(error.errorResponse.code,'', error.errorResponse.errmsg))
+      else console.log(error);
+    }
 })
 
 
-app.get('/api/products/recommendToken',
-  async (req,res,next) => {
-    var token = req.headers['authorization']
-    if(!token) return res.send(response(401,'',"Fill your token pls !"))
-    token = token.split(" ")[1]
-    jwt.verify(token, process.env.SECRETKEY, function(err, decoded) {
-      if(err){
-        return res.send(response(404,'',"Error while validating your Token"))
-      }
-      else{
-        if(decoded === undefined){
-          return res.send(response(404,'',"Your Token is undefined"))
-        }
-        else{
-          req.body["decoded"] = decoded
-          next()
-        }
-      }
-    });
-  },
+app.get('/api/products/recommendToken', authentication,
   async (req, res) => {
     try {
         let sortUser = req.body["decoded"].data.sort
@@ -2026,7 +1638,6 @@ app.get('/api/products/recommend',
 );
 
 
-
 app.get('/api/create_csv', async (req, res) => {
   try {
     // Giả sử `reviews` là model đã được định nghĩa
@@ -2074,46 +1685,6 @@ app.get('/api/create_csv', async (req, res) => {
     console.error(error);
     if (error.errorResponse) return res.send(response(error.errorResponse.code, '', error.errorResponse.errmsg));
   }
-});
-
-
-//Single
-app.post('/uploadfile', upload.single('image'), (req, res, next) => {
-  const file = req.file
-  if (!file) {
-    const error = new Error('Please upload a file')
-    error.httpStatusCode = 400
-    return next(error)
-  }
-  console.log(file);
-  
-  res.send(response(200,file))
-})
-
-//Uploading multiple files
-app.post('/uploadmultiple', upload.array('images', 12), (req, res, next) => {
-  const files = req.files
-  if (!files) {
-    const error = new Error('Please choose files')
-    error.httpStatusCode = 400
-    return next(error)
-  }
-  res.send(response(200,files))
-
-})
-
-////Uploading multiple files with multiple fields
-app.post('/multiField', upload.fields([
-  { name: 'image', maxCount: 1 },
-  { name: 'images', maxCount: 12 }
- ]), (req, res, next) => {
-  const files = req.files;
-  if (!files) {
-    const error = new Error('Please choose files');
-    error.httpStatusCode = 400;
-    return next(error);
-  }
-  res.send(response(200, files));
 });
 
   
