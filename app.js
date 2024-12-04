@@ -1,7 +1,7 @@
 const express = require('express')
 const app = express()
 const path = require('path');
-app.use(express.json()); // Add this line
+app.use(express.urlencoded({ extended : true})); // Add this line
 
 require('dotenv').config()
 
@@ -548,31 +548,28 @@ app.post('/api/product/shop',
 
 app.post('/api/product/top_rating',
   async(req,res)=>{
-    try {
-      let { Id_seller } = req.body
-      const checkId = ObjectId.isValid(Id_seller)
-      if(checkId === false){
-        return res.send(response(504,'' , 'Không phải là ObjectID'))
-      }
-      const top_rating = await products.aggregate([
-        { $match : { userID : new mongoose.Types.ObjectId(Id_seller), product_avg_rating : { $gte : 4 } }},
-        { $project : {
-            _id : 1,
-            product_name : 1,
-            product_slug : 1,
-            product_imgs : 1,
-            product_supp_price : 1,
-            product_sold_quantity : 1,
-            product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
-            categories   : 1, // ở đây nếu không lọc ra thì ở dưới _id của $group sẽ bằng null
-        }},
-        { $limit : 6 }
-      ])
-      res.send(response(200 , top_rating))
-    } catch (e) {
-      if(e.errorResponse)  return res.send(response(e.errorResponse.code,'' , e.errorResponse.errmsg))
-      else console.log(e)
+    let { Id_seller } = req.body
+    const checkId = ObjectId.isValid(Id_seller)
+    if(checkId === false){
+      return res.send(response(504,'' , 'Không phải là ObjectID'))
     }
+
+    const top_rating = await products.aggregate([
+      { $match : { userID : new  mongoose.Types.ObjectId(Id_seller) }},
+      { $project : {
+          _id : 1,
+          product_name : 1,
+          product_slug : 1,
+          product_imgs : 1,
+          product_supp_price : 1,
+          product_sold_quantity : 1,
+          product_avg_rating : 1, // :1 nghĩa là sẽ lấy , :0 sẽ không lấy
+          categories   : 1, // ở đây nếu không lọc ra thì ở dưới _id của $group sẽ bằng null
+      }},
+      { $limit : 6}
+    ]).exec()
+
+    res.send(response(200 , top_rating))
   }
 )
 
@@ -1220,7 +1217,7 @@ app.post('/api/orders/manage', authentication,
       }
 
       if(sortBy == "time_asc"){
-        sort_condition = 1 // giảm dần : -1  và tăng dần : 1
+        sort_condition = -1 // giảm dần : -1  và tăng dần : 1
         attribute      = "createdAt"
       }else if(sortBy == "price_asc"){
         sort_condition = 1
