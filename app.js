@@ -287,7 +287,7 @@ app.post('/api/category/getlistCategory' ,
     res.send(response(200 , dataCategory))
  }
 )
-
+ 
 let category_on_page = 5
 app.post('/api/category', authentication,
   async (req,res)=>{
@@ -1378,6 +1378,12 @@ app.post('/api/reviews/create', upload.array('review_image',5), authentication,
       product_detail.product_variants = product_detail.product_variants.filter(element => {
         return element._id.toString() === product_variants_id;
       })
+
+
+      const updateProduct = await products.findOneAndUpdate(
+        { _id: new mongoose.Types.ObjectId(product_id), 'product_variants._id': new mongoose.Types.ObjectId(product_variants_id) },
+        { $inc: { 'product_variants.$.in_stock': -1 } }
+      );      
 
       // product_variants_name
       user_infor = {
